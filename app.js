@@ -1,57 +1,55 @@
 /* ============================================================
-   Cards App v5.0 — Часть 1
-   Данные, навигация, языки, папки, слова, классика, тест
+   Cards App v6.0 — Часть 1
+   Данные, навигация, тропа, языки, уроки, классика, тест, XP
    ============================================================ */
 
-const STORE_KEY = 'cards_app_data_v5';
-const OLD_KEY = 'cards_app_data_v4';
+const STORE_KEY = 'cards_app_data_v6';
+const OLD_KEY = 'cards_app_data_v5';
 
 /* ---------- ДАННЫЕ ПО УМОЛЧАНИЮ ---------- */
 function defaultData() {
   return {
     langs: [],
     settings: {
-      sound: true, vibe: true,
-      srs: true,
-      dailyGoal: 20,
-      dailyDate: null,
-      dailyCount: 0,
+      sound: true, vibe: true, srs: true,
+      dailyGoal: 20, dailyDate: null, dailyCount: 0,
       reverseMode: false,
-      lastStudyDate: null,
-      streak: 0,
-      totalXP: 0,
-      achievements: [],
-      studyHistory: {} // { '2026-09-23': count }
+      lastStudyDate: null, streak: 0,
+      totalXP: 0, achievements: [], studyHistory: {}
     }
   };
 }
 
 function load() {
   try {
-    let raw = localStorage.getItem(STORE_KEY);
-    if (!raw) raw = localStorage.getItem(OLD_KEY);
+    let raw = localStorage.getItem(STORE_KEY) || localStorage.getItem(OLD_KEY);
     if (raw) {
       const d = JSON.parse(raw);
       const def = defaultData();
       d.settings = Object.assign(def.settings, d.settings || {});
       if (!d.settings.studyHistory) d.settings.studyHistory = {};
       if (!Array.isArray(d.settings.achievements)) d.settings.achievements = [];
-      if (d.settings.totalXP === undefined) d.settings.totalXP = 0;
-      d.langs.forEach(l => l.folders.forEach(f => {
-        f.cards.forEach(c => {
-          if (c.seen === undefined) c.seen = 0;
-          if (c.correct === undefined) c.correct = 0;
-          if (c.wrong === undefined) c.wrong = 0;
-          if (c.star === undefined) c.star = false;
-          if (c.lastSeen === undefined) c.lastSeen = null;
-          if (c.srsNext === undefined) c.srsNext = null;
-          if (c.srsLevel === undefined) c.srsLevel = 0;
-        });
-      }));
+      d.langs.forEach(l => {
+        if (!l.lessons) l.lessons = [];
+        if (!l.folders) l.folders = l.folders || [];
+        if (!l.isBuiltin) l.isBuiltin = false;
+        // Убедимся, что у карточек в старых папках есть все поля
+        l.folders.forEach(f => f.cards.forEach(c => normalizeCard(c)));
+        l.lessons.forEach(ls => ls.cards.forEach(c => normalizeCard(c)));
+      });
       return d;
     }
   } catch(e) { console.error(e); }
   return defaultData();
+}
+function normalizeCard(c) {
+  if (c.seen === undefined) c.seen = 0;
+  if (c.correct === undefined) c.correct = 0;
+  if (c.wrong === undefined) c.wrong = 0;
+  if (c.star === undefined) c.star = false;
+  if (c.lastSeen === undefined) c.lastSeen = null;
+  if (c.srsNext === undefined) c.srsNext = null;
+  if (c.srsLevel === undefined) c.srsLevel = 0;
 }
 
 let data = load();
@@ -60,7 +58,8 @@ function uid() { return Date.now().toString(36) + Math.random().toString(36).sli
 
 /* ---------- СОСТОЯНИЕ ---------- */
 let currentLangId = null;
-let currentFolderId = null;
+let currentFolderId = null;    // для пользовательской папки
+let currentLessonId = null;    // для урока тропы
 let studyMode = 'classic';
 let studyDeck = [];
 let studyIndex = 0;
@@ -69,7 +68,6 @@ let sessionCorrect = 0;
 let sessionWrong = 0;
 let sessionXP = 0;
 let sessionStreakCorrect = 0;
-let quizOptions = [];
 let quizLocked = false;
 let quizTimer = null;
 let quizTimeLeft = 10;
@@ -78,26 +76,16 @@ let matchSelectedLeft = null;
 let matchSelectedRight = null;
 let matchBatch = 5;
 let matchOffset = 0;
-let audioDeck = [];
-let audioIndex = 0;
-let audioLocked = false;
-let speedDeck = [];
-let speedIndex = 0;
-let speedScore = 0;
-let speedTimer = null;
-let speedTimeLeft = 60;
-let speedLocked = false;
-let mixDeck = [];
-let mixIndex = 0;
-let mixFlipped = false;
-let mixSource = null;
+let audioDeck = [], audioIndex = 0, audioLocked = false, audioTimer = null;
+let speedDeck = [], speedIndex = 0, speedScore = 0, speedTimer = null, speedTimeLeft = 60, speedLocked = false;
+let mixDeck = [], mixIndex = 0, mixFlipped = false;
 let lastLesson = null;
 
 /* ============================================================
    XP И УРОВНИ
    ============================================================ */
 const LEVELS = [
-  { min: 0,     name: '🐣 Новичок',  next: 500 },
+  { min: 0,     name: '🐧 Птенец',   next: 500 },
   { min: 500,   name: '📚 Ученик',   next: 2000 },
   { min: 2000,  name: '🎓 Знаток',   next: 5000 },
   { min: 5000,  name: '🏆 Мастер',   next: 10000 },
@@ -123,29 +111,44 @@ function addXP(n) {
    АЧИВКИ
    ============================================================ */
 const ACHIEVEMENTS = [
-  { id: 'first',   icon: '🎯', name: 'Первый шаг',        desc: '1 правильный ответ' },
-  { id: 'hundred', icon: '💯', name: 'Сотка',              desc: '100 правильных' },
-  { id: 'thousand',icon: '🌟', name: 'Тысячник',           desc: '1000 правильных' },
-  { id: 'week',    icon: '🔥', name: 'Неделя',             desc: '7 дней подряд' },
-  { id: 'month',   icon: '🔥🔥', name: 'Месяц',            desc: '30 дней подряд' },
-  { id: 'polyglot',icon: '📚', name: 'Полиглот',           desc: '3 языка' },
-  { id: 'vocab',   icon: '🧠', name: 'Словарный запас',    desc: '100 слов выучено' },
-  { id: 'professor',icon:'🎓', name: 'Профессор',          desc: '500 слов выучено' },
-  { id: 'collector',icon:'🎴', name: 'Коллекционер',       desc: '100 звёздочек' },
-  { id: 'legend',  icon: '👑', name: 'Легенда',            desc: '10000 XP' },
-  { id: 'speedster',icon:'🚀', name: 'Скорость',           desc: 'Скоростной режим: 20+ слов' },
-  { id: 'mixer',   icon: '🌪', name: 'Миксер',             desc: 'Пройти микс-тренировку' }
+  { id: 'first',     icon: '🎯', name: 'Первый шаг',       desc: '1 правильный ответ' },
+  { id: 'hundred',   icon: '💯', name: 'Сотка',             desc: '100 правильных' },
+  { id: 'thousand',  icon: '🌟', name: 'Тысячник',          desc: '1000 правильных' },
+  { id: 'week',      icon: '🔥', name: 'Неделя',            desc: '7 дней подряд' },
+  { id: 'month',     icon: '🔥🔥', name: 'Месяц',           desc: '30 дней подряд' },
+  { id: 'polyglot',  icon: '📚', name: 'Полиглот',          desc: '3 языка' },
+  { id: 'vocab',     icon: '🧠', name: 'Словарный запас',   desc: '100 слов выучено' },
+  { id: 'professor', icon: '🎓', name: 'Профессор',         desc: '500 слов выучено' },
+  { id: 'collector', icon: '🎴', name: 'Коллекционер',      desc: '100 звёздочек' },
+  { id: 'legend',    icon: '👑', name: 'Легенда',           desc: '10000 XP' },
+  { id: 'speedster', icon: '🚀', name: 'Скорость',          desc: 'Скоростной: 20+ слов' },
+  { id: 'mixer',     icon: '🌪', name: 'Миксер',            desc: 'Пройти микс-тренировку' },
+  { id: 'trail1',    icon: '🌳', name: 'Первая тропа',      desc: 'Завершить урок тропы' },
+  { id: 'trail10',   icon: '🌲', name: 'Лесоруб',           desc: 'Завершить 10 уроков' },
+  { id: 'trail50',   icon: '🏔️', name: 'Покоритель',        desc: 'Завершить 50 уроков' },
+  { id: 'penguin',   icon: '🐧', name: 'Друг пингвина',     desc: 'Пройти 3 урока за день' }
 ];
+
 function countStats() {
-  let correct = 0, learned = 0, starred = 0, total = 0;
-  data.langs.forEach(l => l.folders.forEach(f => f.cards.forEach(c => {
-    total++;
-    correct += c.correct || 0;
-    if (c.correct > 0 && c.correct >= c.wrong) learned++;
-    if (c.star) starred++;
-  })));
-  return { correct, learned, starred, total, langs: data.langs.length };
+  let correct = 0, learned = 0, starred = 0, total = 0, lessonsDone = 0;
+  data.langs.forEach(l => {
+    (l.folders || []).forEach(f => f.cards.forEach(c => {
+      total++; correct += c.correct || 0;
+      if (c.correct > 0 && c.correct >= c.wrong) learned++;
+      if (c.star) starred++;
+    }));
+    (l.lessons || []).forEach(ls => {
+      ls.cards.forEach(c => {
+        total++; correct += c.correct || 0;
+        if (c.correct > 0 && c.correct >= c.wrong) learned++;
+        if (c.star) starred++;
+      });
+      if (ls.completed) lessonsDone++;
+    });
+  });
+  return { correct, learned, starred, total, langs: data.langs.length, lessonsDone };
 }
+
 function unlockAchievement(id) {
   if (data.settings.achievements.includes(id)) return false;
   data.settings.achievements.push(id);
@@ -168,6 +171,9 @@ function checkAchievements() {
   if (s.learned >= 500) unlockAchievement('professor');
   if (s.starred >= 100) unlockAchievement('collector');
   if (xp >= 10000) unlockAchievement('legend');
+  if (s.lessonsDone >= 1) unlockAchievement('trail1');
+  if (s.lessonsDone >= 10) unlockAchievement('trail10');
+  if (s.lessonsDone >= 50) unlockAchievement('trail50');
 }
 
 /* ============================================================
@@ -179,13 +185,6 @@ function showScreen(id) {
   updateNavHighlight(id);
 }
 function updateNavHighlight(screenId) {
-  const mainScreens = ['screen-langs', 'screen-profile'];
-  const nav = document.getElementById('main-nav');
-  if (mainScreens.includes(screenId)) {
-    nav.classList.remove('hidden');
-  } else {
-    nav.classList.remove('hidden');
-  }
   document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
   if (screenId === 'screen-langs') document.getElementById('nav-langs').classList.add('active');
   if (screenId === 'screen-profile' || screenId === 'screen-stats' ||
@@ -198,12 +197,21 @@ function navTo(where) {
   if (where === 'profile') goProfile();
 }
 function goLangs() {
-  currentLangId = null; currentFolderId = null;
-  renderLangs();
-  showScreen('screen-langs');
+  currentLangId = null; currentFolderId = null; currentLessonId = null;
+  renderLangs(); showScreen('screen-langs');
 }
-function goFolders() { currentFolderId = null; renderFolders(); showScreen('screen-folders'); }
-function goCards() { renderCards(); showScreen('screen-cards'); }
+function goTrail() {
+  currentFolderId = null; currentLessonId = null;
+  renderTrail(); showScreen('screen-trail');
+}
+function goCards() {
+  if (currentLessonId) {
+    // Назад в тропу из урока
+    goTrail();
+    return;
+  }
+  renderCards(); showScreen('screen-cards');
+}
 function goProfile() { renderProfile(); showScreen('screen-profile'); }
 
 /* ============================================================
@@ -237,16 +245,14 @@ function soundFinish() {
 function vibrate(pattern) { if (!data.settings.vibe || !navigator.vibrate) return; navigator.vibrate(pattern); }
 
 /* ============================================================
-   ОЗВУЧКА (Web Speech API)
+   ОЗВУЧКА
    ============================================================ */
-function speak(text, lang) {
+function speak(text) {
   if (!('speechSynthesis' in window)) { toast('Озвучка не поддерживается'); return; }
   try {
     window.speechSynthesis.cancel();
     const u = new SpeechSynthesisUtterance(text);
-    u.rate = 0.9;
-    u.pitch = 1;
-    if (lang) u.lang = lang;
+    u.rate = 0.9; u.pitch = 1;
     window.speechSynthesis.speak(u);
   } catch(e) { toast('Не удалось озвучить'); }
 }
@@ -254,31 +260,13 @@ function speakCurrent(e) {
   if (e) e.stopPropagation();
   const card = studyDeck[studyIndex];
   if (!card) return;
-  const text = studyFlipped ? card.back : card.front;
-  speak(text);
+  speak(studyFlipped ? card.back : card.front);
 }
 function speakMix(e) {
   if (e) e.stopPropagation();
   const card = mixDeck[mixIndex];
   if (!card) return;
-  const text = mixFlipped ? card.back : card.front;
-  speak(text);
-}
-
-/* ============================================================
-   ЭМОДЗИ ЯЗЫКОВ
-   ============================================================ */
-const FLAGS = [
-  [/(испан|span|españ)/i, '🇪🇸'], [/(англ|engl|ingl)/i, '🇬🇧'],
-  [/(нем|german|deut)/i, '🇩🇪'], [/(рус|russ)/i, '🇷🇺'],
-  [/(фран|fran)/i, '🇫🇷'], [/(итал|ital)/i, '🇮🇹'],
-  [/(китай|chin|mand)/i, '🇨🇳'], [/(япон|japan)/i, '🇯🇵'],
-  [/(коре|kore)/i, '🇰🇷'], [/(порт|port)/i, '🇵🇹'],
-  [/(араб|arab)/i, '🇸🇦'], [/(тур|turk)/i, '🇹🇷']
-];
-function langEmoji(name) {
-  for (const [re, emoji] of FLAGS) if (re.test(name)) return emoji;
-  return '🌍';
+  speak(mixFlipped ? card.back : card.front);
 }
 
 /* ============================================================
@@ -288,28 +276,41 @@ function renderLangs() {
   const el = document.getElementById('langs-list'); el.innerHTML = '';
   updateStreakBadge();
   if (!data.langs.length) {
-    el.innerHTML = '<div class="empty">Пока нет языков.<br>Нажмите «+ Добавить язык».</div>';
+    el.innerHTML = '<div class="empty">🐧 Пока нет языков.<br>Нажмите «+ Добавить язык».</div>';
     return;
   }
   data.langs.forEach(lang => {
-    const count = lang.folders.reduce((s,f) => s + f.cards.length, 0);
-    const learned = lang.folders.reduce((s,f) =>
-      s + f.cards.filter(c => c.correct > 0 && c.correct >= c.wrong).length, 0);
-    const pct = count ? Math.round(learned / count * 100) : 0;
+    const stats = langStats(lang);
     const div = document.createElement('div'); div.className = 'list-item';
     div.innerHTML = `<div class="info">
-        <div class="title">${langEmoji(lang.name)} ${esc(lang.name)}</div>
-        <div class="sub">${lang.folders.length} папок · ${count} слов · ${pct}% выучено</div>
-        <div class="stat-bar"><div style="width:${pct}%"></div></div>
+        <div class="title">${lang.emoji || '🌍'} ${esc(lang.name)}${lang.isBuiltin ? ' <span class="badge ok">готовый</span>' : ''}</div>
+        <div class="sub">${stats.lessonsDone} / ${stats.lessonsTotal} уроков · ${stats.total} слов · ${stats.pct}%</div>
+        <div class="stat-bar"><div style="width:${stats.pct}%"></div></div>
       </div>
       <span class="delete-x" onclick="event.stopPropagation(); confirmDeleteLang('${lang.id}')">✕</span>`;
     div.onclick = () => {
       currentLangId = lang.id;
-      document.getElementById('folders-title').textContent = langEmoji(lang.name) + ' ' + lang.name;
-      goFolders();
+      document.getElementById('trail-title').textContent = `${lang.emoji || '🌍'} ${lang.name}`;
+      goTrail();
     };
     el.appendChild(div);
   });
+}
+function langStats(lang) {
+  let total = 0, learned = 0, lessonsDone = 0, lessonsTotal = (lang.lessons || []).length;
+  (lang.folders || []).forEach(f => f.cards.forEach(c => {
+    total++;
+    if (c.correct > 0 && c.correct >= c.wrong) learned++;
+  }));
+  (lang.lessons || []).forEach(ls => {
+    ls.cards.forEach(c => {
+      total++;
+      if (c.correct > 0 && c.correct >= c.wrong) learned++;
+    });
+    if (ls.completed) lessonsDone++;
+  });
+  const pct = total ? Math.round(learned / total * 100) : 0;
+  return { total, learned, pct, lessonsDone, lessonsTotal };
 }
 function updateStreakBadge() {
   const el = document.getElementById('header-streak');
@@ -317,34 +318,144 @@ function updateStreakBadge() {
   const s = data.settings.streak || 0;
   el.textContent = s > 0 ? `🔥 ${s}` : '';
 }
+
+/* ---------- МОДАЛКА ДОБАВЛЕНИЯ ЯЗЫКА ---------- */
 function openAddLang() {
-  document.getElementById('lang-input').value = '';
+  // Показываем список шаблонов + поле для своего
+  const el = document.getElementById('lang-input');
+  el.value = '';
+  // Собираем модалку с шаблонами
+  const existingTpl = new Set(data.langs.filter(l => l.templateKey).map(l => l.templateKey));
+  const tplHtml = AVAILABLE_TEMPLATES.map(t => {
+    const used = existingTpl.has(t.key);
+    return `<button class="mode-btn" ${used ? 'disabled style="opacity:0.4;cursor:not-allowed;"' : ''} onclick="addLangFromTemplate('${t.key}')">
+      <div class="mode-icon">${t.emoji}</div>
+      <div class="mode-name">${t.name}</div>
+      <div class="mode-desc">${used ? 'Уже добавлен' : '8 тем · 120 слов'}</div>
+    </button>`;
+  }).join('');
+  // Вставляем временный блок шаблонов в модалку
+  const modal = document.querySelector('#modal-lang .modal');
+  let tplBlock = document.getElementById('tpl-block');
+  if (!tplBlock) {
+    tplBlock = document.createElement('div');
+    tplBlock.id = 'tpl-block';
+    tplBlock.style.cssText = 'display:flex;flex-direction:column;gap:8px;margin-bottom:14px;';
+    const actions = modal.querySelector('.modal-actions');
+    modal.insertBefore(tplBlock, actions);
+  }
+  tplBlock.innerHTML = `<div class="help-text" style="margin-bottom:4px;">Готовые языки с темами:</div>${tplHtml}
+    <div class="help-text" style="margin-top:10px;margin-bottom:4px;">Или создай свой (пустой):</div>`;
   openModal('modal-lang');
-  setTimeout(() => document.getElementById('lang-input').focus(), 150);
+  setTimeout(() => el.focus(), 150);
+}
+function addLangFromTemplate(key) {
+  const lang = createLangFromTemplate(key);
+  if (!lang) { toast('Не удалось создать язык'); return; }
+  data.langs.push(lang);
+  save(); closeModal('modal-lang');
+  renderLangs();
+  toast(`${lang.emoji} ${lang.name} добавлен!`);
+  checkAchievements();
 }
 function saveLang() {
   const name = document.getElementById('lang-input').value.trim();
   if (!name) return;
-  data.langs.push({ id: uid(), name, folders: [] });
+  data.langs.push({
+    id: uid(), name, emoji: '🌍', isBuiltin: false,
+    lessons: [], folders: []
+  });
   save(); closeModal('modal-lang'); renderLangs();
   checkAchievements();
 }
 function confirmDeleteLang(id) {
-  confirmDialog('Удалить язык?', 'Все папки и слова внутри тоже удалятся.', () => {
+  confirmDialog('Удалить язык?', 'Все уроки, папки и прогресс удалятся.', () => {
     data.langs = data.langs.filter(l => l.id !== id);
     save(); renderLangs();
   });
 }
 
 /* ============================================================
-   ПАПКИ
+   ТРОПА
    ============================================================ */
-function renderFolders() {
+function switchTab(tab) {
+  document.getElementById('tab-trail').classList.toggle('active', tab === 'trail');
+  document.getElementById('tab-mine').classList.toggle('active', tab === 'mine');
+  document.getElementById('tab-content-trail').style.display = tab === 'trail' ? 'block' : 'none';
+  document.getElementById('tab-content-mine').style.display = tab === 'mine' ? 'block' : 'none';
+  if (tab === 'mine') renderMineList();
+}
+function renderTrail() {
   const lang = data.langs.find(l => l.id === currentLangId);
   if (!lang) { goLangs(); return; }
-  const el = document.getElementById('folders-list'); el.innerHTML = '';
-  if (!lang.folders.length) {
-    el.innerHTML = '<div class="empty">Нет папок. Создайте первую!</div>';
+
+  // Фраза пингвина
+  const penguinEl = document.getElementById('trail-penguin');
+  const phraseEl = document.getElementById('trail-phrase');
+  if (penguinEl) penguinEl.textContent = '🐧';
+  if (phraseEl) phraseEl.textContent = penguinForTrail();
+
+  // Тропа
+  const pathEl = document.getElementById('trail-path');
+  pathEl.innerHTML = '';
+  if (!lang.lessons || !lang.lessons.length) {
+    pathEl.innerHTML = '<div class="empty">🐧 Тут пока пусто.<br>Перейди на вкладку «Мои папки», чтобы добавить свои слова.</div>';
+    return;
+  }
+
+  // Определяем текущий урок — первый незавершённый
+  const currentIdx = lang.lessons.findIndex(l => !l.completed);
+  lang.lessons.forEach((lesson, idx) => {
+    const isDone = lesson.completed;
+    const isCurrent = idx === currentIdx;
+    const isLocked = !isDone && !isCurrent && idx > currentIdx;
+
+    const node = document.createElement('div');
+    node.className = 'trail-node' + (isDone ? ' done' : '');
+
+    // Текст-лейбл с темой (справа от кружка)
+    let labelHtml = '';
+    if (isCurrent || isDone) {
+      labelHtml = `<div class="lesson-label">
+        <div class="title">${lesson.themeEmoji || '📘'} ${esc(lesson.themeName)}</div>
+        <div class="sub">Урок ${lesson.lessonNum} из ${lesson.totalInTheme} · ${lesson.cards.length} слов</div>
+      </div>`;
+    }
+
+    node.innerHTML = `
+      <div class="line"></div>
+      <div class="lesson-circle ${isLocked ? 'locked' : ''} ${isCurrent ? 'current' : ''} ${isDone ? 'done' : ''}"
+           onclick="${isLocked ? `toast('🔒 Сначала пройди предыдущие уроки')` : `openLesson('${lesson.id}')`}">
+        <div class="lesson-icon">${isDone ? '⭐' : isLocked ? '🔒' : lesson.themeEmoji || '📘'}</div>
+        <div class="lesson-num">${lesson.themeName.substring(0, 3)} ${lesson.lessonNum}</div>
+      </div>
+      ${labelHtml}
+    `;
+    pathEl.appendChild(node);
+  });
+}
+
+function openLesson(lessonId) {
+  const lang = data.langs.find(l => l.id === currentLangId);
+  const lesson = lang.lessons.find(l => l.id === lessonId);
+  if (!lesson) return;
+  currentLessonId = lessonId;
+  currentFolderId = null;
+  document.getElementById('cards-title').textContent = `${lesson.themeEmoji || '📘'} ${lesson.themeName} · Урок ${lesson.lessonNum}`;
+  renderCards();
+  showScreen('screen-cards');
+}
+
+/* ============================================================
+   МОИ ПАПКИ
+   ============================================================ */
+function renderMineList() {
+  const lang = data.langs.find(l => l.id === currentLangId);
+  if (!lang) return;
+  const el = document.getElementById('mine-list');
+  el.innerHTML = '';
+  if (!lang.folders || !lang.folders.length) {
+    el.innerHTML = '<div class="empty">🐧 Пока нет своих папок.<br>Добавь слова вручную или импортируй CSV.</div>';
     return;
   }
   lang.folders.forEach(folder => {
@@ -354,14 +465,16 @@ function renderFolders() {
     const div = document.createElement('div'); div.className = 'list-item';
     div.innerHTML = `<div class="info">
         <div class="title">${esc(folder.name)}</div>
-        <div class="sub">${total} слов · ${pct}% выучено</div>
+        <div class="sub">${total} слов · ${pct}%</div>
         <div class="stat-bar"><div style="width:${pct}%"></div></div>
       </div>
       <span class="delete-x" onclick="event.stopPropagation(); confirmDeleteFolder('${folder.id}')">✕</span>`;
     div.onclick = () => {
       currentFolderId = folder.id;
+      currentLessonId = null;
       document.getElementById('cards-title').textContent = folder.name;
-      goCards();
+      renderCards();
+      showScreen('screen-cards');
     };
     el.appendChild(div);
   });
@@ -375,60 +488,76 @@ function saveFolder() {
   const name = document.getElementById('folder-input').value.trim();
   if (!name) return;
   const lang = data.langs.find(l => l.id === currentLangId);
+  if (!lang.folders) lang.folders = [];
   lang.folders.push({ id: uid(), name, cards: [] });
-  save(); closeModal('modal-folder'); renderFolders();
+  save(); closeModal('modal-folder'); renderMineList();
+  // Автоматически открываем для редактирования
+  const newFolder = lang.folders[lang.folders.length - 1];
+  currentFolderId = newFolder.id;
+  currentLessonId = null;
+  document.getElementById('cards-title').textContent = newFolder.name;
+  renderCards();
+  showScreen('screen-cards');
 }
 function confirmDeleteFolder(id) {
-  confirmDialog('Удалить папку?', 'Все слова внутри тоже удалятся.', () => {
+  confirmDialog('Удалить папку?', 'Все слова внутри удалятся.', () => {
     const lang = data.langs.find(l => l.id === currentLangId);
     lang.folders = lang.folders.filter(f => f.id !== id);
-    save(); renderFolders();
+    save(); renderMineList();
   });
 }
 
 /* ============================================================
-   КАРТОЧКИ (список)
+   КАРТОЧКИ (список внутри урока/папки)
    ============================================================ */
-function renderCards() {
+function getCurrentContainer() {
   const lang = data.langs.find(l => l.id === currentLangId);
-  const folder = lang.folders.find(f => f.id === currentFolderId);
-  if (!folder) { goFolders(); return; }
+  if (!lang) return null;
+  if (currentLessonId) return lang.lessons.find(l => l.id === currentLessonId);
+  if (currentFolderId) return lang.folders.find(f => f.id === currentFolderId);
+  return null;
+}
+function renderCards() {
+  const c = getCurrentContainer();
+  if (!c) { goTrail(); return; }
   const el = document.getElementById('cards-list'); el.innerHTML = '';
-  if (!folder.cards.length) {
-    el.innerHTML = '<div class="empty">Пока нет слов.<br>Нажмите «Текст», чтобы добавить.</div>';
+  if (!c.cards.length) {
+    el.innerHTML = '<div class="empty">🐧 Пока нет слов.<br>Нажми «Текст» или «Импорт CSV».</div>';
     return;
   }
-  folder.cards.forEach((c, i) => {
-    const learned = c.correct > 0 && c.correct >= c.wrong;
-    const badge = c.seen === 0 ? '<span class="badge">новое</span>' :
+  c.cards.forEach((card, i) => {
+    const learned = card.correct > 0 && card.correct >= card.wrong;
+    const badge = card.seen === 0 ? '<span class="badge">новое</span>' :
                   learned ? '<span class="badge ok">выучено</span>' :
                   '<span class="badge bad">учить</span>';
     const div = document.createElement('div'); div.className = 'list-item';
     div.innerHTML = `<div class="info">
-        <div class="title">${c.star ? '⭐ ' : ''}${esc(c.front)} ${badge}</div>
-        <div class="sub">${esc(c.back)}</div>
+        <div class="title">${card.star ? '⭐ ' : ''}${esc(card.front)} ${badge}</div>
+        <div class="sub">${esc(card.back)}</div>
       </div>
       <span class="delete-x" onclick="event.stopPropagation(); deleteCard(${i})">✕</span>`;
     el.appendChild(div);
   });
 }
 function deleteCard(idx) {
-  const lang = data.langs.find(l => l.id === currentLangId);
-  const folder = lang.folders.find(f => f.id === currentFolderId);
-  folder.cards.splice(idx, 1); save(); renderCards();
+  const c = getCurrentContainer();
+  if (!c) return;
+  c.cards.splice(idx, 1);
+  save(); renderCards();
 }
 
 /* ============================================================
-   МАССОВЫЙ ВВОД
+   МАССОВЫЙ ВВОД (только для пользовательских папок/уроков)
    ============================================================ */
 function openBulkAdd() {
-  const lang = data.langs.find(l => l.id === currentLangId);
-  const folder = lang.folders.find(f => f.id === currentFolderId);
-  document.getElementById('bulk-input').value = folder.cards.map(c => `${c.front} | ${c.back}`).join('\n');
+  const c = getCurrentContainer();
+  if (!c) return;
+  document.getElementById('bulk-input').value = c.cards.map(x => `${x.front} | ${x.back}`).join('\n');
   openModal('modal-bulk');
 }
 function parseBulk(text) {
-  const lines = text.split('\n').map(l => l.trim()).filter(Boolean); const cards = [];
+  const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+  const cards = [];
   for (const line of lines) {
     let parts = null;
     if (line.includes('\t')) parts = line.split('\t');
@@ -439,11 +568,9 @@ function parseBulk(text) {
     else if (line.includes(';')) parts = line.split(';');
     else if (line.includes(',')) parts = line.split(',');
     if (!parts || parts.length < 2) continue;
-    const front = parts[0].trim(); const back = parts.slice(1).join(' ').trim();
-    if (front && back) cards.push({
-      front, back, seen: 0, correct: 0, wrong: 0, star: false,
-      lastSeen: null, srsNext: null, srsLevel: 0
-    });
+    const front = parts[0].trim();
+    const back = parts.slice(1).join(' ').trim();
+    if (front && back) cards.push(makeCard(front, back));
   }
   return cards;
 }
@@ -451,23 +578,21 @@ function addBulk() {
   const text = document.getElementById('bulk-input').value;
   const newCards = parseBulk(text);
   if (!newCards.length) { toast('Не удалось распознать строки'); return; }
-  const lang = data.langs.find(l => l.id === currentLangId);
-  const folder = lang.folders.find(f => f.id === currentFolderId);
-  const existing = new Set(folder.cards.map(c => c.front.toLowerCase()));
+  const c = getCurrentContainer();
+  const existing = new Set(c.cards.map(x => x.front.toLowerCase()));
   let added = 0;
-  for (const c of newCards) {
-    if (!existing.has(c.front.toLowerCase())) { folder.cards.push(c); added++; }
+  for (const card of newCards) {
+    if (!existing.has(card.front.toLowerCase())) { c.cards.push(card); added++; }
   }
-  save(); closeModal('modal-bulk'); renderCards(); toast(`Добавлено: ${added}`);
+  save(); closeModal('modal-bulk'); renderCards();
+  toast(`Добавлено: ${added}`);
 }
 function replaceBulk() {
-  confirmDialog('Заменить всё?', 'Все текущие слова будут удалены.', () => {
-    const text = document.getElementById('bulk-input').value;
-    const newCards = parseBulk(text);
-    const lang = data.langs.find(l => l.id === currentLangId);
-    const folder = lang.folders.find(f => f.id === currentFolderId);
-    folder.cards = newCards;
-    save(); closeModal('modal-bulk'); renderCards(); toast(`Заменено: ${newCards.length}`);
+  confirmDialog('Заменить всё?', 'Все текущие слова удалятся.', () => {
+    const c = getCurrentContainer();
+    c.cards = parseBulk(document.getElementById('bulk-input').value);
+    save(); closeModal('modal-bulk'); renderCards();
+    toast(`Заменено: ${c.cards.length}`);
   });
 }
 
@@ -477,6 +602,8 @@ function replaceBulk() {
 function renderModePicker() {
   const xp = data.settings.totalXP || 0;
   const el = document.getElementById('mode-picker');
+  const c = getCurrentContainer();
+  const wordsCount = c ? c.cards.length : 0;
   el.innerHTML = `
     <button class="mode-btn" onclick="startStudy('classic', false)">
       <div class="mode-icon">🎴</div>
@@ -486,47 +613,48 @@ function renderModePicker() {
     <button class="mode-btn" onclick="startStudy('classic', true)">
       <div class="mode-icon">🎯</div>
       <div class="mode-name">Только не выученные</div>
-      <div class="mode-desc">Карточки, которые ты ещё плохо знаешь</div>
+      <div class="mode-desc">Слова, которые ты ещё плохо знаешь</div>
     </button>
     <button class="mode-btn" onclick="startStudy('quiz', false)">
       <div class="mode-icon">⚡</div>
       <div class="mode-name">Быстрый урок</div>
-      <div class="mode-desc">Выбери правильный перевод из 4 вариантов</div>
+      <div class="mode-desc">Выбери перевод из 4 вариантов</div>
     </button>
     <button class="mode-btn" onclick="startStudy('match', false)">
       <div class="mode-icon">🔗</div>
       <div class="mode-name">Сопоставление</div>
-      <div class="mode-desc">Соедини слова с переводами по парам</div>
+      <div class="mode-desc">Соедини пары (нужно 3+ слова)</div>
     </button>
     <button class="mode-btn" onclick="startStudy('audio', false)">
       <div class="mode-icon">🔊</div>
       <div class="mode-name">Аудио-режим</div>
-      <div class="mode-desc">Слушай слово и выбирай перевод</div>
+      <div class="mode-desc">Слушай и выбирай перевод</div>
     </button>
-    <button class="mode-btn ${xp < 500 ? 'locked' : ''}" onclick="${xp < 500 ? `toast('Нужно 500 XP (у тебя ${xp})')` : `startStudy('speed', false)`}">
+    <button class="mode-btn ${xp < 500 ? 'locked' : ''}"
+      onclick="${xp < 500 ? `toast('🔒 Нужно 500 XP (у тебя ${xp})')` : `startStudy('speed', false)`}">
       ${xp < 500 ? '<span class="mode-lock">🔒 500 XP</span>' : ''}
       <div class="mode-icon">🚀</div>
       <div class="mode-name">Скоростной режим</div>
-      <div class="mode-desc">60 секунд — максимум правильных ответов</div>
+      <div class="mode-desc">60 секунд — максимум ответов</div>
     </button>
-    <button class="mode-btn ${xp < 1000 ? 'locked' : ''}" onclick="${xp < 1000 ? `toast('Нужно 1000 XP (у тебя ${xp})')` : `startMix()`}">
+    <button class="mode-btn ${xp < 1000 ? 'locked' : ''}"
+      onclick="${xp < 1000 ? `toast('🔒 Нужно 1000 XP (у тебя ${xp})')` : `startMix()`}">
       ${xp < 1000 ? '<span class="mode-lock">🔒 1000 XP</span>' : ''}
       <div class="mode-icon">🌪</div>
       <div class="mode-name">Микс-тренировка</div>
-      <div class="mode-desc">Случайные слова из всех папок языка</div>
+      <div class="mode-desc">Случайные слова со всего языка</div>
     </button>
   `;
 }
 function openModePicker() {
-  const lang = data.langs.find(l => l.id === currentLangId);
-  const folder = lang.folders.find(f => f.id === currentFolderId);
-  if (!folder.cards.length) { toast('Нет слов для изучения'); return; }
+  const c = getCurrentContainer();
+  if (!c || !c.cards.length) { toast('🐧 Нет слов для изучения'); return; }
   renderModePicker();
   showScreen('screen-modes');
 }
 
 /* ============================================================
-   ЗАПУСК УЧЁБЫ
+   СТАРТ УЧЁБЫ
    ============================================================ */
 function resetSession() {
   sessionCorrect = 0; sessionWrong = 0; sessionXP = 0; sessionStreakCorrect = 0;
@@ -534,11 +662,11 @@ function resetSession() {
   matchSelectedLeft = null; matchSelectedRight = null; matchOffset = 0;
 }
 function startStudy(mode, onlyUnlearned) {
-  const lang = data.langs.find(l => l.id === currentLangId);
-  const folder = lang.folders.find(f => f.id === currentFolderId);
-  let deck = [...folder.cards];
-  if (onlyUnlearned) deck = deck.filter(c => !(c.correct > 0 && c.correct >= c.wrong));
-  if (!deck.length) { toast('Нет слов для изучения'); return; }
+  const c = getCurrentContainer();
+  if (!c) return;
+  let deck = [...c.cards];
+  if (onlyUnlearned) deck = deck.filter(x => !(x.correct > 0 && x.correct >= x.wrong));
+  if (!deck.length) { toast('🐧 Нет слов для изучения'); return; }
   studyMode = mode;
   resetSession();
   studyDeck = deck;
@@ -546,28 +674,28 @@ function startStudy(mode, onlyUnlearned) {
   studyFlipped = false;
 
   if (mode === 'classic') {
-    document.getElementById('study-title').textContent = folder.name;
+    document.getElementById('study-title').textContent = c.name || c.themeName || 'Урок';
     showScreen('screen-study');
     renderStudyCard();
   } else if (mode === 'quiz') {
     if (studyDeck.length < 2) { toast('Нужно минимум 2 слова'); return; }
-    document.getElementById('quiz-title').textContent = folder.name;
+    document.getElementById('quiz-title').textContent = c.name || c.themeName || 'Тест';
     showScreen('screen-quiz');
     renderQuizCard();
   } else if (mode === 'match') {
     if (studyDeck.length < 3) { toast('Нужно минимум 3 слова'); return; }
-    document.getElementById('match-title').textContent = folder.name;
+    document.getElementById('match-title').textContent = c.name || c.themeName || 'Пары';
     showScreen('screen-match');
     renderMatchBatch();
   } else if (mode === 'audio') {
     if (studyDeck.length < 2) { toast('Нужно минимум 2 слова'); return; }
-    document.getElementById('audio-title').textContent = folder.name;
+    document.getElementById('audio-title').textContent = c.name || c.themeName || 'Аудио';
     audioDeck = deck; audioIndex = 0;
     showScreen('screen-audio');
     renderAudioCard();
   } else if (mode === 'speed') {
     if (studyDeck.length < 4) { toast('Нужно минимум 4 слова'); return; }
-    document.getElementById('speed-title').textContent = '🚀 ' + folder.name;
+    document.getElementById('speed-title').textContent = '🚀 ' + (c.name || c.themeName || '');
     speedDeck = shuffleArr(deck);
     speedIndex = 0; speedScore = 0; speedTimeLeft = 60; speedLocked = false;
     showScreen('screen-speed');
@@ -577,7 +705,7 @@ function startStudy(mode, onlyUnlearned) {
 }
 
 /* ============================================================
-   РЕЖИМ 1: КЛАССИЧЕСКИЕ КАРТОЧКИ
+   КЛАССИКА
    ============================================================ */
 function renderStudyCard() {
   const card = studyDeck[studyIndex];
@@ -601,7 +729,7 @@ function renderStudyCard() {
 function toggleReverse() {
   data.settings.reverseMode = !data.settings.reverseMode;
   save(); renderStudyCard();
-  toast(data.settings.reverseMode ? 'Обратный режим ВКЛ' : 'Обратный режим ВЫКЛ');
+  toast(data.settings.reverseMode ? '🔄 Обратный режим ВКЛ' : '🔄 Обратный режим ВЫКЛ');
 }
 function toggleStar() {
   const card = studyDeck[studyIndex]; if (!card) return;
@@ -645,7 +773,7 @@ function shuffleDeck() {
     const j = Math.floor(Math.random() * (i + 1));
     [studyDeck[i], studyDeck[j]] = [studyDeck[j], studyDeck[i]];
   }
-  studyIndex = 0; studyFlipped = false; renderStudyCard(); toast('Перемешано');
+  studyIndex = 0; studyFlipped = false; renderStudyCard(); toast('🔀 Перемешано');
 }
 
 /* Свайпы */
@@ -686,17 +814,16 @@ cardEl.addEventListener('touchend', () => {
 }, { passive: true });
 
 /* ============================================================
-   РЕЖИМ 2: БЫСТРЫЙ ТЕСТ (с таймером)
+   БЫСТРЫЙ ТЕСТ
    ============================================================ */
 function renderQuizCard() {
   const card = studyDeck[studyIndex];
   if (!card) { finishSession(); return; }
   quizLocked = false;
   document.getElementById('quiz-question').textContent = card.front;
-  const wrongPool = studyDeck.filter(c => c.front !== card.front);
-  const wrongs = shuffleArr(wrongPool).slice(0, 3).map(c => c.back);
+  const wrongPool = studyDeck.filter(x => x.front !== card.front);
+  const wrongs = shuffleArr(wrongPool).slice(0, 3).map(x => x.back);
   const opts = shuffleArr([card.back, ...wrongs]);
-  quizOptions = opts;
   const optsEl = document.getElementById('quiz-options');
   optsEl.innerHTML = '';
   opts.forEach(opt => {
@@ -730,9 +857,8 @@ function startQuizTimer(card) {
 function quizTimeout(card) {
   quizLocked = true;
   card.seen++; card.wrong++; sessionWrong++; sessionStreakCorrect = 0;
-  updateSRS(card, false);
-  save();
-  document.querySelectorAll('.quiz-option').forEach(b => {
+  updateSRS(card, false); save();
+  document.querySelectorAll('#quiz-options .quiz-option').forEach(b => {
     if (b.textContent === card.back) b.classList.add('correct');
   });
   soundBad(); vibrate([30, 40, 30]);
@@ -760,7 +886,7 @@ function quizAnswer(btn, chosen, card) {
   } else {
     card.wrong++; sessionWrong++; sessionStreakCorrect = 0;
     btn.classList.add('wrong');
-    document.querySelectorAll('.quiz-option').forEach(b => {
+    document.querySelectorAll('#quiz-options .quiz-option').forEach(b => {
       if (b.textContent === card.back) b.classList.add('correct');
     });
     soundBad(); vibrate([30, 40, 30]);
@@ -776,23 +902,15 @@ function quizAnswer(btn, chosen, card) {
 }
 
 /* ============================================================
-   SRS (интервальное повторение)
+   SRS
    ============================================================ */
 function updateSRS(card, correct) {
   if (!data.settings.srs) return;
-  if (correct) {
-    card.srsLevel = Math.min((card.srsLevel || 0) + 1, 5);
-  } else {
-    card.srsLevel = 0;
-  }
-  const intervals = [0, 1, 2, 4, 7, 14]; // дней
+  if (correct) card.srsLevel = Math.min((card.srsLevel || 0) + 1, 5);
+  else card.srsLevel = 0;
+  const intervals = [0, 1, 2, 4, 7, 14];
   const days = intervals[card.srsLevel] || 14;
   card.srsNext = Date.now() + days * 86400000;
-}
-function isCardDue(card) {
-  if (!data.settings.srs) return true;
-  if (!card.srsNext) return true;
-  return Date.now() >= card.srsNext;
 }
 
 /* ============================================================
@@ -817,7 +935,7 @@ function toast(msg) {
   const t = document.getElementById('toast');
   t.textContent = msg; t.classList.add('show');
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => t.classList.remove('show'), 2000);
+  toastTimer = setTimeout(() => t.classList.remove('show'), 2200);
 }
 function confirmDialog(title, text, onOk) {
   document.getElementById('confirm-title').textContent = title;
@@ -853,36 +971,55 @@ function incrementDailyCount(n) {
   data.settings.studyHistory[d] = (data.settings.studyHistory[d] || 0) + n;
   save();
   if (data.settings.dailyCount >= data.settings.dailyGoal) {
-    if (!data.settings.dailyBonusGiven || data.settings.dailyBonusDate !== today) {
-      data.settings.dailyBonusGiven = true;
+    if (data.settings.dailyBonusDate !== today) {
       data.settings.dailyBonusDate = today;
       addXP(50);
-      toast('🎯 Ежедневная цель выполнена! +50 XP');
+      toast('🎯 Ежедневная цель! +50 XP');
     }
   }
 }
 
 /* ============================================================
-   ФИНАЛЬНЫЙ ЭКРАН + КОНФЕТТИ
+   ФИНАЛ + КОНФЕТТИ
    ============================================================ */
 function finishSession() {
   clearInterval(quizTimer);
   clearInterval(speedTimer);
   clearInterval(audioTimer);
   lastLesson = {
-    mode: studyMode, langId: currentLangId, folderId: currentFolderId
+    mode: studyMode,
+    langId: currentLangId,
+    folderId: currentFolderId,
+    lessonId: currentLessonId
   };
   const total = sessionCorrect + sessionWrong;
   const pct = total ? Math.round(sessionCorrect / total * 100) : 0;
+
+  // Обновляем прогресс урока
+  if (currentLessonId) {
+    const lang = data.langs.find(l => l.id === currentLangId);
+    const lesson = lang && lang.lessons.find(l => l.id === currentLessonId);
+    if (lesson) {
+      // Считаем, все ли слова урока выучены
+      const allLearned = lesson.cards.every(c => c.correct > 0 && c.correct >= c.wrong);
+      if (allLearned || pct >= 70) {
+        if (!lesson.completed) {
+          lesson.completed = true;
+          toast('🌟 Урок пройден!');
+        }
+      }
+    }
+  }
+
   document.getElementById('finish-correct').textContent = sessionCorrect;
   document.getElementById('finish-wrong').textContent = sessionWrong;
   document.getElementById('finish-pct').textContent = pct + '%';
   document.getElementById('finish-xp').textContent = `+${sessionXP} XP`;
-  const emojiEl = document.getElementById('finish-emoji');
-  if (pct >= 90) emojiEl.textContent = '🏆';
-  else if (pct >= 70) emojiEl.textContent = '🎉';
-  else if (pct >= 50) emojiEl.textContent = '👍';
-  else emojiEl.textContent = '💪';
+  document.getElementById('finish-emoji').textContent = finishEmoji(pct);
+  document.getElementById('finish-title').textContent = penguinForFinish(pct);
+  document.getElementById('finish-title').style.fontSize = '18px';
+  document.getElementById('finish-title').style.maxWidth = '320px';
+  document.getElementById('finish-title').style.margin = '0 auto 16px';
   showScreen('screen-finish');
   soundFinish();
   vibrate([50, 50, 100]);
@@ -894,13 +1031,18 @@ function finishSession() {
   checkAchievements();
 }
 function repeatLesson() {
-  if (!lastLesson) { goCards(); return; }
+  if (!lastLesson) { goTrail(); return; }
   currentLangId = lastLesson.langId;
   currentFolderId = lastLesson.folderId;
+  currentLessonId = lastLesson.lessonId;
   startStudy(lastLesson.mode, false);
 }
+function exitStudy() {
+  if (currentLessonId || currentFolderId) goCards();
+  else goTrail();
+}
 function startConfetti() {
-  const colors = ['#ff3b30','#ff9500','#ffcc00','#34c759','#007aff','#5856d6','#ff2d92'];
+  const colors = ['#ff3b30','#ff9500','#ffcc00','#34c759','#007aff','#5856d6','#ff2d92','#4fc3f7'];
   for (let i = 0; i < 60; i++) {
     const c = document.createElement('div');
     c.className = 'confetti';
@@ -930,13 +1072,13 @@ window.addEventListener('load', () => {
   }, 1200);
 });
 /* ============================================================
-   Cards App v5.0 — Часть 2
+   Cards App v6.0 — Часть 2
    Сопоставление, аудио, скоростной, микс, профиль, достижения,
-   статистика, настройки, календарь, прогресс-кольцо
+   статистика, календарь, настройки, CSV-импорт
    ============================================================ */
 
 /* ============================================================
-   РЕЖИМ 3: СОПОСТАВЛЕНИЕ
+   СОПОСТАВЛЕНИЕ
    ============================================================ */
 function renderMatchBatch() {
   matchSelectedLeft = null;
@@ -1026,9 +1168,8 @@ function selectMatch(side, tile) {
 }
 
 /* ============================================================
-   РЕЖИМ 4: АУДИО
+   АУДИО-РЕЖИМ
    ============================================================ */
-let audioTimer = null;
 function renderAudioCard() {
   const card = audioDeck[audioIndex];
   if (!card) { finishSession(); return; }
@@ -1054,9 +1195,8 @@ function playAudioWord() {
   const card = audioDeck[audioIndex];
   if (!card) return;
   const btn = document.getElementById('audio-play');
-  btn.classList.add('playing');
+  if (btn) { btn.classList.add('playing'); setTimeout(() => btn.classList.remove('playing'), 1500); }
   speak(card.front);
-  setTimeout(() => btn.classList.remove('playing'), 1500);
 }
 function audioAnswer(btn, chosen, card) {
   if (audioLocked) return;
@@ -1089,7 +1229,7 @@ function audioAnswer(btn, chosen, card) {
 }
 
 /* ============================================================
-   РЕЖИМ 5: СКОРОСТНОЙ
+   СКОРОСТНОЙ РЕЖИМ
    ============================================================ */
 function startSpeedTimer() {
   clearInterval(speedTimer);
@@ -1162,24 +1302,21 @@ function speedAnswer(btn, chosen, card) {
 }
 
 /* ============================================================
-   РЕЖИМ 6: МИКС-ТРЕНИРОВКА
+   МИКС-ТРЕНИРОВКА
    ============================================================ */
 function startMix() {
   const lang = data.langs.find(l => l.id === currentLangId);
   if (!lang) return;
   const all = [];
-  lang.folders.forEach(f => f.cards.forEach(c => {
-    all.push({ ...c, _folder: f.name, _folderId: f.id });
-  }));
+  (lang.folders || []).forEach(f => f.cards.forEach(c => all.push({ ...c, _folder: f.name, _folderId: f.id })));
+  (lang.lessons || []).forEach(ls => ls.cards.forEach(c => all.push({ ...c, _folder: ls.themeName, _lessonId: ls.id })));
   if (all.length < 3) { toast('Нужно минимум 3 слова во всём языке'); return; }
   resetSession();
   studyMode = 'mix';
   mixDeck = shuffleArr(all).slice(0, 20);
   mixIndex = 0;
   mixFlipped = false;
-  mixSource = lang.id;
-  document.getElementById('mix-title').textContent = `🌪 ${langEmoji(lang.name)} ${lang.name}`;
-  document.getElementById('mix-info').textContent = `Случайные ${mixDeck.length} слов из всех папок`;
+  document.getElementById('mix-title').textContent = `🌪 ${lang.emoji || ''} ${lang.name}`;
   showScreen('screen-mix');
   renderMixCard();
 }
@@ -1201,7 +1338,7 @@ document.getElementById('mix-card').addEventListener('click', () => {
 function mixAnswer(correct) {
   const card = mixDeck[mixIndex];
   if (!card) return;
-  const realCard = findCardById(card.front, card._folderId);
+  const realCard = findCardInLang(card.front, card._folderId, card._lessonId);
   if (realCard) {
     realCard.seen++;
     if (correct) {
@@ -1229,12 +1366,18 @@ function mixAnswer(correct) {
     renderMixCard();
   }, 500);
 }
-function findCardById(front, folderId) {
+function findCardInLang(front, folderId, lessonId) {
   const lang = data.langs.find(l => l.id === currentLangId);
   if (!lang) return null;
-  const folder = lang.folders.find(f => f.id === folderId);
-  if (!folder) return null;
-  return folder.cards.find(c => c.front === front);
+  if (folderId) {
+    const f = (lang.folders || []).find(x => x.id === folderId);
+    if (f) return f.cards.find(c => c.front === front);
+  }
+  if (lessonId) {
+    const ls = (lang.lessons || []).find(x => x.id === lessonId);
+    if (ls) return ls.cards.find(c => c.front === front);
+  }
+  return null;
 }
 
 /* ============================================================
@@ -1256,11 +1399,11 @@ function renderProfile() {
   const el = document.getElementById('profile-content');
   el.innerHTML = `
     <div class="profile-header">
-      <div class="profile-avatar">👤</div>
-      <div class="profile-level">Уровень ${lvl.level.name}</div>
+      <div class="profile-avatar">🐧</div>
+      <div class="profile-level">${lvl.level.name}</div>
       <div class="profile-title">${xp} XP всего</div>
       <div class="xp-bar"><div style="width:${Math.round(lvl.progress * 100)}%"></div></div>
-      <div class="xp-text">${lvl.next.min === Infinity ? 'Максимум!' : `${xp} / ${lvl.next.min} XP до следующего`}</div>
+      <div class="xp-text">${lvl.next.min === Infinity ? '🏆 Максимум!' : `${xp} / ${lvl.next.min} XP до след. уровня`}</div>
     </div>
 
     <div class="daily-ring">
@@ -1273,43 +1416,39 @@ function renderProfile() {
       <div class="daily-info">
         <div class="big">${dailyCount} / ${dailyGoal}</div>
         <div class="small">🎯 Ежедневная цель</div>
-        <div class="small">🔥 Streak: ${data.settings.streak || 0} дней</div>
+        <div class="small">🔥 Streak: ${data.settings.streak || 0} дн.</div>
       </div>
     </div>
 
     <div class="stats-grid">
       <div class="stat-card"><div class="num">${s.total}</div><div class="lbl">Всего слов</div></div>
       <div class="stat-card"><div class="num">${s.learned}</div><div class="lbl">Выучено</div></div>
-      <div class="stat-card"><div class="num">${s.correct}</div><div class="lbl">Правильных</div></div>
+      <div class="stat-card"><div class="num">${s.lessonsDone}</div><div class="lbl">Уроков тропы</div></div>
       <div class="stat-card"><div class="num">${unlocked}/${totalAch}</div><div class="lbl">Достижений</div></div>
     </div>
 
     <div class="section-title">Разделы</div>
     <div class="list-item" onclick="openAchievements()">
       <div class="info"><div class="title">🏆 Достижения</div>
-      <div class="sub">${unlocked} из ${totalAch} разблокировано</div></div>
-      <div class="val">›</div>
+      <div class="sub">${unlocked} из ${totalAch} разблокировано</div></div><div class="val">›</div>
     </div>
     <div class="list-item" onclick="openStats()">
       <div class="info"><div class="title">📊 Статистика</div>
-      <div class="sub">Подробные цифры по языкам</div></div>
-      <div class="val">›</div>
+      <div class="sub">Подробные цифры</div></div><div class="val">›</div>
     </div>
     <div class="list-item" onclick="openCalendar()">
       <div class="info"><div class="title">📅 Календарь занятий</div>
-      <div class="sub">История активности</div></div>
-      <div class="val">›</div>
+      <div class="sub">История за 90 дней</div></div><div class="val">›</div>
     </div>
     <div class="list-item" onclick="openSettings()">
       <div class="info"><div class="title">⚙️ Настройки</div>
-      <div class="sub">Звук, SRS, цель дня, экспорт</div></div>
-      <div class="val">›</div>
+      <div class="sub">SRS, цель, звук, данные</div></div><div class="val">›</div>
     </div>
   `;
 }
 
 /* ============================================================
-   ДОСТИЖЕНИЯ (экран)
+   ДОСТИЖЕНИЯ
    ============================================================ */
 function openAchievements() {
   const el = document.getElementById('achievements-content');
@@ -1330,17 +1469,25 @@ function openAchievements() {
 }
 
 /* ============================================================
-   СТАТИСТИКА (экран)
+   СТАТИСТИКА
    ============================================================ */
 function openStats() {
   const el = document.getElementById('stats-content');
   let totalCards = 0, totalSeen = 0, totalCorrect = 0, totalWrong = 0, learned = 0, starred = 0;
-  data.langs.forEach(l => l.folders.forEach(f => f.cards.forEach(c => {
-    totalCards++; totalSeen += c.seen || 0;
-    totalCorrect += c.correct || 0; totalWrong += c.wrong || 0;
-    if (c.correct > 0 && c.correct >= c.wrong) learned++;
-    if (c.star) starred++;
-  })));
+  data.langs.forEach(l => {
+    (l.folders || []).forEach(f => f.cards.forEach(c => {
+      totalCards++; totalSeen += c.seen || 0;
+      totalCorrect += c.correct || 0; totalWrong += c.wrong || 0;
+      if (c.correct > 0 && c.correct >= c.wrong) learned++;
+      if (c.star) starred++;
+    }));
+    (l.lessons || []).forEach(ls => ls.cards.forEach(c => {
+      totalCards++; totalSeen += c.seen || 0;
+      totalCorrect += c.correct || 0; totalWrong += c.wrong || 0;
+      if (c.correct > 0 && c.correct >= c.wrong) learned++;
+      if (c.star) starred++;
+    }));
+  });
   const pct = totalCards ? Math.round(learned / totalCards * 100) : 0;
   const accuracy = (totalCorrect + totalWrong) ? Math.round(totalCorrect / (totalCorrect + totalWrong) * 100) : 0;
   const today = new Date().toDateString();
@@ -1358,13 +1505,11 @@ function openStats() {
     </div>
     <div class="section-title">По языкам</div>
     ${data.langs.map(l => {
-      const lTotal = l.folders.reduce((s,f) => s + f.cards.length, 0);
-      const lLearned = l.folders.reduce((s,f) => s + f.cards.filter(c => c.correct > 0 && c.correct >= c.wrong).length, 0);
-      const lPct = lTotal ? Math.round(lLearned / lTotal * 100) : 0;
+      const st = langStats(l);
       return `<div class="list-item"><div class="info">
-        <div class="title">${langEmoji(l.name)} ${esc(l.name)}</div>
-        <div class="sub">${lLearned} / ${lTotal} · ${lPct}%</div>
-        <div class="stat-bar"><div style="width:${lPct}%"></div></div></div></div>`;
+        <div class="title">${l.emoji || '🌍'} ${esc(l.name)}</div>
+        <div class="sub">${st.lessonsDone} / ${st.lessonsTotal} уроков · ${st.total} слов · ${st.pct}%</div>
+        <div class="stat-bar"><div style="width:${st.pct}%"></div></div></div></div>`;
     }).join('') || '<div class="empty">Пока нет данных</div>'}
     ${studiedToday
       ? '<div class="empty" style="color:var(--good)">✓ Сегодня уже занимались — так держать!</div>'
@@ -1374,7 +1519,7 @@ function openStats() {
 }
 
 /* ============================================================
-   КАЛЕНДАРЬ ЗАНЯТИЙ
+   КАЛЕНДАРЬ
    ============================================================ */
 function openCalendar() {
   const el = document.getElementById('stats-content');
@@ -1386,7 +1531,6 @@ function openCalendar() {
     d.setDate(d.getDate() - i);
     days.push(d);
   }
-  // Выравниваем по дню недели (начинаем с понедельника)
   const firstDay = days[0].getDay();
   const offset = (firstDay + 6) % 7;
   const cells = [];
@@ -1399,7 +1543,7 @@ function openCalendar() {
     else if (count >= 30) lvl = 'l3';
     else if (count >= 15) lvl = 'l2';
     else if (count > 0) lvl = 'l1';
-    cells.push({ key, count, lvl, date: d });
+    cells.push({ key, count, lvl });
   });
   el.innerHTML = `
     <div class="section-title">Последние 90 дней</div>
@@ -1439,7 +1583,7 @@ function toggleVibe() { data.settings.vibe = document.getElementById('vibe-toggl
 function toggleSRS() {
   data.settings.srs = document.getElementById('srs-toggle').checked;
   save();
-  toast(data.settings.srs ? 'SRS включён' : 'SRS выключен');
+  toast(data.settings.srs ? '🧠 SRS включён' : '🧠 SRS выключен');
 }
 function changeDailyGoal() {
   document.getElementById('goal-input').value = data.settings.dailyGoal || 20;
@@ -1451,24 +1595,109 @@ function saveDailyGoal() {
   data.settings.dailyGoal = v;
   save(); closeModal('modal-goal');
   document.getElementById('daily-goal-val').textContent = v + ' слов';
-  toast(`Цель: ${v} слов в день`);
+  toast(`🎯 Цель: ${v} слов в день`);
+}
+function resetTrailProgress() {
+  confirmDialog('Сбросить прогресс тропы?',
+    'Все уроки тропы станут снова не пройденными. Слова и папки останутся.',
+    () => {
+      data.langs.forEach(l => (l.lessons || []).forEach(ls => {
+        ls.completed = false;
+        ls.cards.forEach(c => { c.seen = 0; c.correct = 0; c.wrong = 0; c.srsNext = null; c.srsLevel = 0; });
+      }));
+      save(); toast('🌳 Прогресс тропы сброшен');
+    });
 }
 
 /* ============================================================
-   ЭКСПОРТ / ИМПОРТ
+   ИМПОРТ CSV
+   ============================================================ */
+function openImportCSV() {
+  document.getElementById('csv-name').value = '';
+  openModal('modal-csv');
+}
+function handleCSV(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = ev => {
+    try {
+      const text = ev.target.result;
+      const cards = parseCSV(text);
+      if (!cards.length) { toast('Не удалось распознать строки'); e.target.value = ''; return; }
+      const lang = data.langs.find(l => l.id === currentLangId);
+      if (!lang) { toast('Сначала выбери язык'); e.target.value = ''; return; }
+      const baseName = file.name.replace(/\.[^.]+$/, '');
+      const customName = document.getElementById('csv-name').value.trim();
+      const folderName = customName || `📥 ${baseName} (${cards.length})`;
+      if (!lang.folders) lang.folders = [];
+      lang.folders.push({ id: uid(), name: folderName, cards });
+      save();
+      closeModal('modal-csv');
+      toast(`📥 Загружено: ${cards.length} слов`);
+      switchTab('mine');
+      renderMineList();
+      checkAchievements();
+    } catch(err) {
+      console.error(err);
+      toast('Ошибка чтения файла');
+    }
+    e.target.value = '';
+  };
+  reader.readAsText(file, 'UTF-8');
+}
+function parseCSV(text) {
+  const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+  const cards = [];
+  for (const line of lines) {
+    // пропускаем заголовки
+    if (/^(word|слово|front|оригинал)[,;\t]/i.test(line)) continue;
+    let parts = null;
+    if (line.includes('\t')) parts = line.split('\t');
+    else if (line.includes(' | ')) parts = line.split(' | ');
+    else if (line.includes(';')) parts = line.split(';');
+    else if (line.includes(',')) parts = parseCSVLine(line, ',');
+    else if (line.includes('|')) parts = line.split('|');
+    else if (line.includes(' — ')) parts = line.split(' — ');
+    if (!parts || parts.length < 2) continue;
+    const front = stripQuotes(parts[0].trim());
+    const back = stripQuotes(parts.slice(1).join(' ').trim());
+    if (front && back) cards.push(makeCard(front, back));
+  }
+  return cards;
+}
+function parseCSVLine(line, sep) {
+  // Простой парсер с учётом кавычек
+  const out = [];
+  let cur = '', inQ = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (ch === '"') { inQ = !inQ; continue; }
+    if (ch === sep && !inQ) { out.push(cur); cur = ''; continue; }
+    cur += ch;
+  }
+  out.push(cur);
+  return out;
+}
+function stripQuotes(s) { return s.replace(/^["']|["']$/g, ''); }
+
+/* ============================================================
+   ЭКСПОРТ / ИМПОРТ БЭКАПА
    ============================================================ */
 function exportData() {
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
-  a.href = url; a.download = `cards-backup-${new Date().toISOString().slice(0,10)}.json`;
+  a.href = url;
+  a.download = `cards-backup-${new Date().toISOString().slice(0,10)}.json`;
   a.click();
-  URL.revokeObjectURL(url); toast('Файл сохранён');
+  URL.revokeObjectURL(url);
+  toast('💾 Файл сохранён');
 }
 function importData(e) {
   const file = e.target.files[0]; if (!file) return;
   const reader = new FileReader();
-  reader.onload = (ev) => {
+  reader.onload = ev => {
     try {
       const imported = JSON.parse(ev.target.result);
       if (!imported.langs) throw new Error('bad format');
@@ -1476,31 +1705,51 @@ function importData(e) {
         data = imported;
         const def = defaultData();
         data.settings = Object.assign(def.settings, data.settings || {});
-        save(); renderLangs(); toast('Импортировано');
+        data.langs.forEach(l => {
+          if (!l.lessons) l.lessons = [];
+          if (!l.folders) l.folders = [];
+          l.lessons.forEach(ls => ls.cards.forEach(c => normalizeCard(c)));
+          l.folders.forEach(f => f.cards.forEach(c => normalizeCard(c)));
+        });
+        save(); renderLangs(); toast('📥 Импортировано');
       });
     } catch(err) { toast('Ошибка чтения файла'); }
   };
-  reader.readAsText(file); e.target.value = '';
+  reader.readAsText(file);
+  e.target.value = '';
 }
 function resetStats() {
-  confirmDialog('Сбросить статистику?', 'Прогресс по всем словам обнулится (XP и достижения тоже).', () => {
-    data.langs.forEach(l => l.folders.forEach(f => f.cards.forEach(c => {
-      c.seen = 0; c.correct = 0; c.wrong = 0; c.lastSeen = null;
-      c.srsNext = null; c.srsLevel = 0;
-    })));
-    data.settings.totalXP = 0;
-    data.settings.achievements = [];
-    data.settings.streak = 0;
-    data.settings.dailyCount = 0;
-    data.settings.studyHistory = {};
-    save(); toast('Статистика сброшена');
-  });
+  confirmDialog('Сбросить статистику?',
+    'Прогресс по всем словам, XP, достижения и streak обнулятся.',
+    () => {
+      data.langs.forEach(l => {
+        (l.folders || []).forEach(f => f.cards.forEach(c => {
+          c.seen = 0; c.correct = 0; c.wrong = 0; c.lastSeen = null;
+          c.srsNext = null; c.srsLevel = 0;
+        }));
+        (l.lessons || []).forEach(ls => {
+          ls.completed = false;
+          ls.cards.forEach(c => {
+            c.seen = 0; c.correct = 0; c.wrong = 0; c.lastSeen = null;
+            c.srsNext = null; c.srsLevel = 0;
+          });
+        });
+      });
+      data.settings.totalXP = 0;
+      data.settings.achievements = [];
+      data.settings.streak = 0;
+      data.settings.dailyCount = 0;
+      data.settings.studyHistory = {};
+      save(); toast('📊 Статистика сброшена');
+    });
 }
 function resetAll() {
-  confirmDialog('Удалить ВСЕ данные?', 'Языки, папки, слова, XP и достижения будут удалены. Это необратимо.', () => {
-    localStorage.removeItem(STORE_KEY);
-    localStorage.removeItem(OLD_KEY);
-    data = defaultData();
-    save(); goLangs(); toast('Всё удалено');
-  });
+  confirmDialog('Удалить ВСЕ данные?',
+    'Языки, слова, XP, достижения — всё удалится. Это необратимо.',
+    () => {
+      localStorage.removeItem(STORE_KEY);
+      localStorage.removeItem(OLD_KEY);
+      data = defaultData();
+      save(); goLangs(); toast('⚠️ Всё удалено');
+    });
 }
