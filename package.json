@@ -1,9 +1,4 @@
 {
   "name": "cards-pwa",
-  "version": "3.0.0",
-  "type": "module",
-  "dependencies": {
-    "web-push": "^3.6.7",
-    "@vercel/kv": "^2.0.0"
-  }
+  "version": "3.0.0"
 }
