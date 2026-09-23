@@ -13,120 +13,264 @@
 <style>
   :root {
     --bg: #f5f5f7; --card-bg: #ffffff; --text: #1c1c1e; --sub: #8e8e93;
-    --line: #e5e5ea; --accent: #007aff; --good: #34c759; --bad: #ff3b30; --star: #ffcc00;
+    --line: #e5e5ea; --accent: #007aff; --good: #34c759; --bad: #ff3b30;
+    --star: #ffcc00; --warn: #ff9500;
+    --grad1: #007aff; --grad2: #5856d6;
   }
   @media (prefers-color-scheme: dark) {
     :root { --bg: #000; --card-bg: #1c1c1e; --text: #fff; --line: #2c2c2e; --accent: #0a84ff; }
   }
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-  html, body { margin:0; padding:0; height:100%; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-    background: var(--bg); color: var(--text); overflow: hidden; user-select: none; -webkit-user-select: none;
-    transition: background 0.3s, color 0.3s; }
-  #app { height: 100vh; display: flex; flex-direction: column;
-    padding-top: env(safe-area-inset-top); padding-bottom: env(safe-area-inset-bottom); }
-  .screen { display: none; flex-direction: column; height: 100%; }
-  .screen.active { display: flex; animation: fadeIn 0.2s ease; }
-  @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+  html, body {
+    margin:0; padding:0; height:100%; overflow:hidden;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    background: var(--bg); color: var(--text);
+    user-select:none; -webkit-user-select:none;
+    transition: background 0.3s, color 0.3s;
+  }
+  #app { height: 100dvh; display: flex; flex-direction: column;
+    padding-top: env(safe-area-inset-top); padding-bottom: env(safe-area-inset-bottom);
+    position: relative; z-index: 1; }
 
-  header { padding: 12px 16px; display: flex; align-items: center; gap: 12px;
-    background: var(--card-bg); border-bottom: 1px solid var(--line); min-height: 52px; }
-  header h1 { font-size: 20px; margin: 0; flex: 1; font-weight: 600;
+  /* ---------- ПРЕЛОАДЕР ---------- */
+  #preloader {
+    position: fixed; inset: 0; z-index: 9999;
+    background: linear-gradient(180deg, #0a0a12, #1a1a2e);
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    color: #fff; transition: opacity 0.5s ease;
+  }
+  #preloader.hide { opacity: 0; pointer-events: none; }
+  #preloader .logo { font-size: 80px; margin-bottom: 20px; animation: pulse 1.2s infinite ease-in-out; }
+  #preloader .name { font-size: 32px; font-weight: 700; letter-spacing: 2px; margin-bottom: 8px; }
+  #preloader .sub { font-size: 13px; color: rgba(255,255,255,0.5); animation: fadeInOut 1.4s infinite; }
+  @keyframes pulse { 0%,100% { transform: scale(1); } 50% { transform: scale(1.15); } }
+  @keyframes fadeInOut { 0%,100% { opacity: 0.4; } 50% { opacity: 1; } }
+
+  /* ---------- ЭКРАНЫ ---------- */
+  .screen { display: none; flex-direction: column; height: 100%; flex: 1; min-height: 0; }
+  .screen.active { display: flex; animation: slideIn 0.25s ease; }
+  @keyframes slideIn { from { opacity: 0; transform: translateX(8px); } to { opacity: 1; transform: none; } }
+
+  header { padding: 12px 16px; display: flex; align-items: center; gap: 10px;
+    background: var(--card-bg); border-bottom: 1px solid var(--line); min-height: 52px; flex-shrink: 0; }
+  header h1 { font-size: 19px; margin: 0; flex: 1; font-weight: 600;
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .btn { background: var(--accent); color: #fff; border: none; border-radius: 8px;
-    padding: 8px 14px; font-size: 15px; font-weight: 500; cursor: pointer;
-    transition: transform 0.1s, opacity 0.2s; }
+  .btn { background: var(--accent); color: #fff; border: none; border-radius: 10px;
+    padding: 10px 16px; font-size: 15px; font-weight: 600; cursor: pointer;
+    transition: transform 0.1s, opacity 0.2s; touch-action: manipulation; }
   .btn.secondary { background: var(--line); color: var(--text); }
   .btn.danger { background: var(--bad); }
+  .btn.good { background: var(--good); }
+  .btn.bad { background: var(--bad); }
   .btn:active { opacity: 0.7; transform: scale(0.96); }
   .btn:disabled { opacity: 0.4; }
+  .btn-icon { background: none; border: none; color: var(--accent); font-size: 22px;
+    padding: 6px 10px; cursor: pointer; border-radius: 8px; }
+  .btn-icon:active { background: var(--line); }
   .back-btn { background: none; border: none; color: var(--accent); font-size: 17px;
-    padding: 4px 0; cursor: pointer; font-weight: 500; }
+    padding: 6px 4px; cursor: pointer; font-weight: 500; flex-shrink: 0; }
   .back-btn:active { opacity: 0.5; }
 
-  .list { flex: 1; overflow-y: auto; padding: 12px; -webkit-overflow-scrolling: touch; }
+  /* ---------- СПИСКИ ---------- */
+  .list { flex: 1; overflow-y: auto; padding: 12px; -webkit-overflow-scrolling: touch; min-height: 0; }
   .list-item { background: var(--card-bg); border-radius: 12px; padding: 16px; margin-bottom: 10px;
     display: flex; align-items: center; gap: 12px; cursor: pointer;
     transition: transform 0.1s, background 0.2s; }
   .list-item:active { transform: scale(0.98); background: var(--line); }
   .list-item .info { flex: 1; min-width: 0; }
-  .list-item .title { font-weight: 500; font-size: 17px; margin-bottom: 2px;
+  .list-item .title { font-weight: 600; font-size: 16px; margin-bottom: 2px;
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .list-item .sub { font-size: 13px; color: var(--sub); }
-  .delete-x { color: var(--bad); font-size: 22px; padding: 0 8px; cursor: pointer; }
-  .stat-bar { height: 4px; background: var(--line); border-radius: 2px; margin-top: 8px; overflow: hidden; }
-  .stat-bar > div { height: 100%; background: var(--good); transition: width 0.3s; }
+  .delete-x { color: var(--bad); font-size: 22px; padding: 0 8px; cursor: pointer; flex-shrink: 0; }
+  .stat-bar { height: 4px; background: var(--line); border-radius: 2px; margin-top: 8px;
+    overflow: hidden; }
+  .stat-bar > div { height: 100%; background: linear-gradient(90deg, var(--grad1), var(--grad2));
+    transition: width 0.4s; border-radius: 2px; }
   .empty { text-align: center; color: var(--sub); padding: 40px 20px; font-size: 15px; }
 
+  /* ---------- НИЖНЯЯ ПАНЕЛЬ (фикс кнопки) ---------- */
+  .bottom-bar {
+    position: sticky; bottom: 0;
+    padding: 12px 16px calc(12px + env(safe-area-inset-bottom));
+    background: var(--card-bg); border-top: 1px solid var(--line);
+    display: flex; gap: 10px; flex-shrink: 0; z-index: 10;
+  }
+  .bottom-bar .btn { flex: 1; }
+
+  /* ---------- КАРТОЧКИ ---------- */
   .card-area { flex: 1; display: flex; align-items: center; justify-content: center;
-    padding: 20px; position: relative; touch-action: none; }
+    padding: 20px; position: relative; touch-action: none; min-height: 0; }
   .card { width: 100%; max-width: 340px; height: 55vh; max-height: 460px;
-    background: var(--card-bg); border-radius: 20px; display: flex; flex-direction: column;
+    background: var(--card-bg); border-radius: 22px; display: flex; flex-direction: column;
     align-items: center; justify-content: center; padding: 30px; text-align: center;
     box-shadow: 0 8px 30px rgba(0,0,0,0.12); position: relative;
     transition: transform 0.3s ease, opacity 0.3s ease, background 0.2s;
-    will-change: transform, opacity; }
-  .card .word { font-size: 30px; font-weight: 600; word-break: break-word; line-height: 1.2; }
+    will-change: transform, opacity;
+    animation: cardPulse 3s infinite ease-in-out; }
+  @keyframes cardPulse {
+    0%, 100% { box-shadow: 0 8px 30px rgba(0,0,0,0.12); }
+    50% { box-shadow: 0 12px 40px rgba(0,122,255,0.18); }
+  }
+  .card .word { font-size: 30px; font-weight: 700; word-break: break-word; line-height: 1.25; }
   .card .meta { position: absolute; top: 16px; left: 16px; right: 16px;
-    display: flex; justify-content: space-between; align-items: center; font-size: 12px; color: var(--sub); }
+    display: flex; justify-content: space-between; align-items: center;
+    font-size: 12px; color: var(--sub); }
   .card .star { font-size: 20px; cursor: pointer; padding: 4px; }
   .card .star.on { color: var(--star); }
   .card .hint { position: absolute; bottom: 20px; font-size: 12px; color: var(--sub); }
   .card.flipped { background: linear-gradient(135deg, var(--card-bg), rgba(10,132,255,0.08)); }
   .card.pop { animation: pop 0.25s; }
-  @keyframes pop { 50% { transform: scale(1.04); } }
+  @keyframes pop { 50% { transform: scale(1.05); } }
+  .card.good-anim { animation: goodAnim 0.5s forwards; }
+  @keyframes goodAnim {
+    0% { transform: scale(1); background: var(--card-bg); }
+    40% { transform: scale(1.06); background: rgba(52,199,89,0.25); }
+    100% { transform: scale(1); }
+  }
+  .card.bad-anim { animation: badAnim 0.5s; }
+  @keyframes badAnim {
+    0%, 100% { transform: translateX(0); }
+    20% { transform: translateX(-12px); background: rgba(255,59,48,0.15); }
+    40% { transform: translateX(12px); }
+    60% { transform: translateX(-8px); }
+    80% { transform: translateX(8px); }
+  }
+  .card.fly-left { animation: flyLeft 0.4s forwards; }
+  @keyframes flyLeft {
+    to { transform: translateX(-500px) rotate(-20deg); opacity: 0; }
+  }
+  .card.fly-right { animation: flyRight 0.4s forwards; }
+  @keyframes flyRight {
+    to { transform: translateX(500px) rotate(20deg); opacity: 0; }
+  }
 
+  /* ---------- ПРОГРЕСС ---------- */
   .swipe-hint { text-align: center; font-size: 12px; color: var(--sub); padding: 6px; }
-  .progress-wrap { padding: 8px 16px; }
-  .progress { height: 6px; background: var(--line); border-radius: 3px; overflow: hidden; margin-bottom: 6px; }
-  .progress > div { height: 100%; background: var(--accent); transition: width 0.3s; border-radius: 3px; }
+  .progress-wrap { padding: 8px 16px 0; flex-shrink: 0; }
+  .progress { height: 6px; background: var(--line); border-radius: 3px;
+    overflow: hidden; margin-bottom: 6px; }
+  .progress > div { height: 100%; background: linear-gradient(90deg, var(--grad1), var(--grad2));
+    transition: width 0.3s; border-radius: 3px; }
   .progress-text { display: flex; justify-content: space-between; font-size: 12px; color: var(--sub); }
+  .streak-badge { display:inline-flex; align-items:center; gap:4px;
+    color: var(--warn); font-weight: 700; }
 
-  .study-actions { display: flex; gap: 10px; padding: 12px 16px 16px; }
+  .study-actions { display: flex; gap: 10px; padding: 12px 16px calc(16px + env(safe-area-inset-bottom));
+    flex-shrink: 0; }
   .study-actions .btn { flex: 1; padding: 16px; font-size: 16px; }
-  .btn.good { background: var(--good); }
-  .btn.bad { background: var(--bad); }
 
+  /* ---------- БЫСТРЫЙ ТЕСТ ---------- */
+  .quiz-question { font-size: 28px; font-weight: 700; text-align: center;
+    padding: 30px 20px 20px; min-height: 120px; display: flex;
+    align-items: center; justify-content: center; }
+  .quiz-options { flex: 1; display: flex; flex-direction: column; gap: 10px;
+    padding: 0 20px 20px; overflow-y: auto; }
+  .quiz-option { background: var(--card-bg); border: 2px solid var(--line);
+    border-radius: 14px; padding: 18px; font-size: 17px; font-weight: 500;
+    cursor: pointer; transition: all 0.15s; text-align: center;
+    color: var(--text); }
+  .quiz-option:active { transform: scale(0.98); }
+  .quiz-option.correct { background: rgba(52,199,89,0.2); border-color: var(--good); }
+  .quiz-option.wrong { background: rgba(255,59,48,0.2); border-color: var(--bad);
+    animation: badAnim 0.4s; }
+
+  /* ---------- СОПОСТАВЛЕНИЕ ---------- */
+  .match-grid { flex: 1; display: grid; grid-template-columns: 1fr 1fr;
+    gap: 10px; padding: 16px; overflow-y: auto; }
+  .match-col { display: flex; flex-direction: column; gap: 10px; }
+  .match-tile { background: var(--card-bg); border: 2px solid var(--line);
+    border-radius: 12px; padding: 16px 10px; font-size: 15px; font-weight: 500;
+    cursor: pointer; transition: all 0.15s; text-align: center;
+    min-height: 60px; display: flex; align-items: center; justify-content: center;
+    word-break: break-word; color: var(--text); }
+  .match-tile:active { transform: scale(0.97); }
+  .match-tile.selected { border-color: var(--accent); background: rgba(10,132,255,0.12); }
+  .match-tile.correct { background: rgba(52,199,89,0.2); border-color: var(--good);
+    opacity: 0.4; pointer-events: none; }
+  .match-tile.wrong { animation: badAnim 0.4s; border-color: var(--bad); }
+
+  /* ---------- МОДАЛКИ ---------- */
   .modal-bg { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5);
     z-index: 100; align-items: center; justify-content: center; padding: 20px;
-    backdrop-filter: blur(4px); }
+    backdrop-filter: blur(6px); }
   .modal-bg.active { display: flex; animation: fadeIn 0.15s; }
-  .modal { background: var(--card-bg); color: var(--text); border-radius: 16px; padding: 20px;
-    width: 100%; max-width: 440px; max-height: 85vh; overflow-y: auto; }
-  .modal h2 { margin: 0 0 12px; font-size: 18px; }
-  .modal input[type=text], .modal input[type=time], .modal textarea {
-    width: 100%; border: 1px solid var(--line); border-radius: 10px; padding: 12px;
-    font-size: 16px; margin-bottom: 16px; background: var(--card-bg); color: var(--text); }
-  .modal textarea { min-height: 160px; font-family: ui-monospace, monospace; font-size: 14px; resize: vertical; }
-  .modal label { font-size: 13px; color: var(--sub); display: block; margin-bottom: 4px; }
+  @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+  .modal { background: var(--card-bg); color: var(--text); border-radius: 18px;
+    padding: 22px; width: 100%; max-width: 440px; max-height: 85vh; overflow-y: auto;
+    animation: modalIn 0.25s ease; }
+  @keyframes modalIn { from { transform: scale(0.92); opacity: 0; }
+    to { transform: scale(1); opacity: 1; } }
+  .modal h2 { margin: 0 0 14px; font-size: 19px; }
+  .modal input[type=text], .modal textarea {
+    width: 100%; border: 1px solid var(--line); border-radius: 12px; padding: 14px;
+    font-size: 16px; margin-bottom: 14px; background: var(--bg); color: var(--text); }
+  .modal textarea { min-height: 180px; font-family: ui-monospace, monospace; font-size: 14px; resize: vertical; }
   .modal-actions { display: flex; gap: 10px; justify-content: flex-end; flex-wrap: wrap; }
   .help-text { font-size: 12px; color: var(--sub); line-height: 1.5; }
 
+  /* ---------- ТОСТ ---------- */
   .toast { position: fixed; bottom: 40px; left: 50%; transform: translateX(-50%);
-    background: rgba(0,0,0,0.85); color: #fff; padding: 10px 18px; border-radius: 20px;
-    font-size: 14px; z-index: 200; opacity: 0; transition: opacity 0.3s; pointer-events: none;
-    max-width: 90vw; text-align: center; }
+    background: rgba(0,0,0,0.85); color: #fff; padding: 12px 20px; border-radius: 24px;
+    font-size: 14px; z-index: 2000; opacity: 0; transition: opacity 0.3s;
+    pointer-events: none; max-width: 90vw; text-align: center; }
   .toast.show { opacity: 1; }
 
+  /* ---------- СТАТИСТИКА ---------- */
   .stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; padding: 12px; }
   .stat-card { background: var(--card-bg); border-radius: 14px; padding: 16px; text-align: center; }
-  .stat-card .num { font-size: 28px; font-weight: 700; color: var(--accent); }
+  .stat-card .num { font-size: 28px; font-weight: 800;
+    background: linear-gradient(135deg, var(--grad1), var(--grad2));
+    -webkit-background-clip: text; background-clip: text; color: transparent; }
   .stat-card .lbl { font-size: 12px; color: var(--sub); margin-top: 4px; }
-  .section-title { font-size: 13px; color: var(--sub); padding: 8px 16px 4px;
-    text-transform: uppercase; letter-spacing: 0.5px; }
+  .section-title { font-size: 12px; color: var(--sub); padding: 12px 16px 4px;
+    text-transform: uppercase; letter-spacing: 0.5px; font-weight: 600; }
 
+  /* ---------- НАСТРОЙКИ ---------- */
   .settings-row { display: flex; align-items: center; justify-content: space-between;
-    padding: 14px 16px; background: var(--card-bg); border-radius: 12px; margin-bottom: 8px; }
+    padding: 16px; background: var(--card-bg); border-radius: 12px; margin-bottom: 8px; }
   .settings-row .lbl { font-size: 15px; }
   .settings-row .val { font-size: 14px; color: var(--sub); }
-  .switch { position: relative; width: 50px; height: 30px; }
+  .switch { position: relative; width: 50px; height: 30px; flex-shrink: 0; }
   .switch input { opacity: 0; width: 0; height: 0; }
   .slider { position: absolute; cursor: pointer; inset: 0; background: var(--line);
     border-radius: 30px; transition: 0.3s; }
-  .slider:before { content: ""; position: absolute; height: 24px; width: 24px; left: 3px; bottom: 3px;
-    background: #fff; border-radius: 50%; transition: 0.3s; }
+  .slider:before { content: ""; position: absolute; height: 24px; width: 24px;
+    left: 3px; bottom: 3px; background: #fff; border-radius: 50%; transition: 0.3s; }
   .switch input:checked + .slider { background: var(--good); }
   .switch input:checked + .slider:before { transform: translateX(20px); }
 
+  /* ---------- ЭКРАН ЗАВЕРШЕНИЯ ---------- */
+  #screen-finish { justify-content: center; align-items: center; padding: 30px; text-align: center; }
+  .finish-emoji { font-size: 80px; margin-bottom: 20px; animation: pulse 1s infinite; }
+  .finish-title { font-size: 28px; font-weight: 800; margin-bottom: 24px; }
+  .finish-stats { display: flex; gap: 20px; margin-bottom: 30px; flex-wrap: wrap; justify-content: center; }
+  .finish-stat { text-align: center; }
+  .finish-stat .num { font-size: 36px; font-weight: 800;
+    background: linear-gradient(135deg, var(--grad1), var(--grad2));
+    -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .finish-stat .lbl { font-size: 13px; color: var(--sub); margin-top: 4px; }
+  .finish-actions { display: flex; gap: 10px; width: 100%; max-width: 320px; }
+  .finish-actions .btn { flex: 1; padding: 16px; }
+
+  /* ---------- КОНФЕТТИ ---------- */
+  .confetti { position: fixed; width: 10px; height: 10px; top: -20px;
+    z-index: 1500; pointer-events: none;
+    animation: fall linear forwards; }
+  @keyframes fall {
+    to { transform: translateY(110vh) rotate(720deg); opacity: 0; }
+  }
+
+  /* ---------- ВЫБОР РЕЖИМА ---------- */
+  .mode-picker { display: flex; flex-direction: column; gap: 10px; padding: 12px; }
+  .mode-btn { background: var(--card-bg); border: 2px solid var(--line);
+    border-radius: 14px; padding: 18px; text-align: left; cursor: pointer;
+    transition: all 0.15s; color: var(--text); }
+  .mode-btn:active { transform: scale(0.98); border-color: var(--accent); }
+  .mode-btn .mode-icon { font-size: 24px; margin-bottom: 6px; }
+  .mode-btn .mode-name { font-size: 16px; font-weight: 700; margin-bottom: 2px; }
+  .mode-btn .mode-desc { font-size: 13px; color: var(--sub); }
+
+  /* ---------- БЕЙДЖИ ---------- */
   .badge { display: inline-block; padding: 2px 8px; border-radius: 10px;
     background: var(--line); font-size: 11px; color: var(--sub); margin-left: 6px; }
   .badge.ok { background: rgba(52,199,89,0.15); color: var(--good); }
@@ -134,55 +278,92 @@
 </style>
 </head>
 <body>
+
+<!-- ПРЕЛОАДЕР -->
+<div id="preloader">
+  <div class="logo">🎴</div>
+  <div class="name">Cards</div>
+  <div class="sub">Загрузка...</div>
+</div>
+
 <div id="app">
 
-  <!-- LANGUAGES -->
+  <!-- ЯЗЫКИ -->
   <div class="screen active" id="screen-langs">
     <header>
       <h1>Мои языки</h1>
-      <button class="btn secondary" onclick="openStats()" style="padding:6px 12px;font-size:14px;">📊</button>
-      <button class="btn secondary" onclick="openSettings()" style="padding:6px 12px;font-size:14px;">⚙️</button>
+      <button class="btn-icon" onclick="openStats()" title="Статистика">📊</button>
+      <button class="btn-icon" onclick="openSettings()" title="Настройки">⚙️</button>
     </header>
     <div class="list" id="langs-list"></div>
-    <div style="padding:12px; background:var(--card-bg); border-top:1px solid var(--line);">
-      <button class="btn" style="width:100%;" onclick="openAddLang()">+ Добавить язык</button>
+    <div class="bottom-bar">
+      <button class="btn" onclick="openAddLang()">+ Добавить язык</button>
     </div>
   </div>
 
-  <!-- FOLDERS -->
+  <!-- ПАПКИ -->
   <div class="screen" id="screen-folders">
     <header>
       <button class="back-btn" onclick="goLangs()">‹ Назад</button>
       <h1 id="folders-title"></h1>
     </header>
     <div class="list" id="folders-list"></div>
-    <div style="padding:12px; background:var(--card-bg); border-top:1px solid var(--line);">
-      <button class="btn" style="width:100%;" onclick="openAddFolder()">+ Добавить папку</button>
+    <div class="bottom-bar">
+      <button class="btn" onclick="openAddFolder()">+ Добавить папку</button>
     </div>
   </div>
 
-  <!-- CARDS -->
+  <!-- КАРТОЧКИ -->
   <div class="screen" id="screen-cards">
     <header>
       <button class="back-btn" onclick="goFolders()">‹ Назад</button>
       <h1 id="cards-title"></h1>
-      <button class="btn secondary" onclick="openBulkAdd()" style="padding:6px 10px; font-size:13px;">+ Слова</button>
+      <button class="btn-icon" onclick="openBulkAdd()" title="Добавить слова">+</button>
     </header>
     <div class="list" id="cards-list"></div>
-    <div style="padding:12px; background:var(--card-bg); border-top:1px solid var(--line); display:flex; gap:10px;">
+    <div class="bottom-bar">
       <button class="btn secondary" style="flex:1;" onclick="openBulkAdd()">Текст</button>
-      <button class="btn secondary" style="flex:1;" onclick="startStudy(true)">Не выученные</button>
-      <button class="btn" style="flex:1.2;" onclick="startStudy(false)">Учить ▶</button>
+      <button class="btn" style="flex:1.4;" onclick="openModePicker()">Учить ▶</button>
     </div>
   </div>
 
-  <!-- STUDY -->
+  <!-- ВЫБОР РЕЖИМА -->
+  <div class="screen" id="screen-modes">
+    <header>
+      <button class="back-btn" onclick="goCards()">‹ Назад</button>
+      <h1>Выбор режима</h1>
+    </header>
+    <div class="mode-picker">
+      <button class="mode-btn" onclick="startStudy('classic', false)">
+        <div class="mode-icon">🎴</div>
+        <div class="mode-name">Классические карточки</div>
+        <div class="mode-desc">Тап — переворот, свайп — следующая</div>
+      </button>
+      <button class="mode-btn" onclick="startStudy('classic', true)">
+        <div class="mode-icon">🎯</div>
+        <div class="mode-name">Только не выученные</div>
+        <div class="mode-desc">Карточки, которые ты ещё плохо знаешь</div>
+      </button>
+      <button class="mode-btn" onclick="startStudy('quiz', false)">
+        <div class="mode-icon">⚡</div>
+        <div class="mode-name">Быстрый урок</div>
+        <div class="mode-desc">Выбери правильный перевод из 4 вариантов</div>
+      </button>
+      <button class="mode-btn" onclick="startStudy('match', false)">
+        <div class="mode-icon">🔗</div>
+        <div class="mode-name">Сопоставление</div>
+        <div class="mode-desc">Соедини слова с переводами по парам</div>
+      </button>
+    </div>
+  </div>
+
+  <!-- КЛАССИЧЕСКАЯ УЧЁБА -->
   <div class="screen" id="screen-study">
     <header>
       <button class="back-btn" onclick="goCards()">‹ Выйти</button>
       <h1 id="study-title"></h1>
-      <button class="btn secondary" onclick="shuffleDeck()" style="padding:6px 10px; font-size:13px;">↻</button>
-      <button class="btn secondary" onclick="toggleStar()" id="star-btn" style="padding:6px 10px; font-size:16px;">☆</button>
+      <button class="btn-icon" onclick="shuffleDeck()" title="Перемешать">↻</button>
+      <button class="btn-icon" onclick="toggleStar()" id="star-btn">☆</button>
     </header>
     <div class="progress-wrap">
       <div class="progress"><div id="progress-fill" style="width:0%"></div></div>
@@ -205,7 +386,58 @@
     <div class="swipe-hint">Свайп влево — не знаю · вправо — знаю</div>
   </div>
 
-  <!-- STATS -->
+  <!-- БЫСТРЫЙ ТЕСТ -->
+  <div class="screen" id="screen-quiz">
+    <header>
+      <button class="back-btn" onclick="goCards()">‹ Выйти</button>
+      <h1 id="quiz-title"></h1>
+    </header>
+    <div class="progress-wrap">
+      <div class="progress"><div id="quiz-progress-fill" style="width:0%"></div></div>
+      <div class="progress-text">
+        <span id="quiz-progress">0 / 0</span>
+        <span id="quiz-session">✓ 0 · ✗ 0</span>
+      </div>
+    </div>
+    <div class="quiz-question" id="quiz-question">—</div>
+    <div class="quiz-options" id="quiz-options"></div>
+  </div>
+
+  <!-- СОПОСТАВЛЕНИЕ -->
+  <div class="screen" id="screen-match">
+    <header>
+      <button class="back-btn" onclick="goCards()">‹ Выйти</button>
+      <h1 id="match-title"></h1>
+    </header>
+    <div class="progress-wrap">
+      <div class="progress"><div id="match-progress-fill" style="width:0%"></div></div>
+      <div class="progress-text">
+        <span id="match-progress">0 / 0</span>
+        <span id="match-session">✓ 0 · ✗ 0</span>
+      </div>
+    </div>
+    <div class="match-grid">
+      <div class="match-col" id="match-left"></div>
+      <div class="match-col" id="match-right"></div>
+    </div>
+  </div>
+
+  <!-- ФИНАЛЬНЫЙ ЭКРАН -->
+  <div class="screen" id="screen-finish">
+    <div class="finish-emoji" id="finish-emoji">🎉</div>
+    <div class="finish-title" id="finish-title">Урок завершён!</div>
+    <div class="finish-stats">
+      <div class="finish-stat"><div class="num" id="finish-correct">0</div><div class="lbl">Правильно</div></div>
+      <div class="finish-stat"><div class="num" id="finish-wrong">0</div><div class="lbl">Ошибок</div></div>
+      <div class="finish-stat"><div class="num" id="finish-pct">0%</div><div class="lbl">Успех</div></div>
+    </div>
+    <div class="finish-actions">
+      <button class="btn secondary" onclick="goCards()">Выйти</button>
+      <button class="btn" onclick="repeatLesson()">Повторить</button>
+    </div>
+  </div>
+
+  <!-- СТАТИСТИКА -->
   <div class="screen" id="screen-stats">
     <header>
       <button class="back-btn" onclick="goLangs()">‹ Назад</button>
@@ -214,28 +446,13 @@
     <div class="list" id="stats-content"></div>
   </div>
 
-  <!-- SETTINGS -->
+  <!-- НАСТРОЙКИ -->
   <div class="screen" id="screen-settings">
     <header>
       <button class="back-btn" onclick="goLangs()">‹ Назад</button>
       <h1>Настройки</h1>
     </header>
     <div class="list">
-      <div class="section-title">Push-уведомления</div>
-      <div class="settings-row">
-        <div>
-          <div class="lbl">Напоминания</div>
-          <div class="val" id="push-status">Не подключено</div>
-        </div>
-        <label class="switch">
-          <input type="checkbox" id="push-toggle" onchange="togglePush()">
-          <span class="slider"></span>
-        </label>
-      </div>
-      <div class="help-text" style="padding: 0 16px 12px;">
-        Напоминания приходят в случайное время с 10:00 до 20:00 по будням и после 14:00 по выходным. Чтобы получать их, приложение должно быть добавлено на «Экран Домой».
-      </div>
-
       <div class="section-title">Звук и вибрация</div>
       <div class="settings-row">
         <div class="lbl">Звуки</div>
@@ -245,7 +462,6 @@
         <div class="lbl">Вибрация</div>
         <label class="switch"><input type="checkbox" id="vibe-toggle" onchange="toggleVibe()"><span class="slider"></span></label>
       </div>
-
       <div class="section-title">Данные</div>
       <div class="settings-row" onclick="exportData()">
         <div class="lbl">💾 Экспорт в файл</div><div class="val">›</div>
@@ -265,10 +481,10 @@
 
 </div>
 
-<!-- Modals -->
+<!-- МОДАЛКИ -->
 <div class="modal-bg" id="modal-lang">
   <div class="modal"><h2>Новый язык</h2>
-    <input type="text" id="lang-input" placeholder="Например: Испанский" autocomplete="off">
+    <input type="text" id="lang-input" placeholder="Например: Испанский 🇪🇸" autocomplete="off">
     <div class="modal-actions">
       <button class="btn secondary" onclick="closeModal('modal-lang')">Отмена</button>
       <button class="btn" onclick="saveLang()">Сохранить</button>
@@ -284,11 +500,11 @@
 </div>
 <div class="modal-bg" id="modal-bulk">
   <div class="modal"><h2>Слова и переводы</h2>
-    <div class="help-text" style="margin-bottom:10px;">Каждая строка — карточка. Формат: <b>слово | перевод</b>. Поддерживается вставка из Excel.<br>Разделители: <b>|</b>, Tab, <b>—</b>, <b>;</b>, <b>,</b></div>
-    <textarea id="bulk-input" placeholder="hola | привет&#10;adiós | пока&#10;gracias | спасибо"></textarea>
+    <div class="help-text" style="margin-bottom:10px;">Каждая строка — карточка. Формат: <b>слово | перевод</b>.<br>Разделители: <b>|</b>, Tab, <b>—</b>, <b>;</b>, <b>,</b></div>
+    <textarea id="bulk-input" placeholder="hola | привет&#10;adiós | пока"></textarea>
     <div class="modal-actions" style="margin-top:12px;">
       <button class="btn secondary" onclick="closeModal('modal-bulk')">Отмена</button>
-      <button class="btn danger" onclick="replaceBulk()" style="margin-right:auto;">Заменить всё</button>
+      <button class="btn danger" onclick="replaceBulk()" style="margin-right:auto;">Заменить</button>
       <button class="btn" onclick="addBulk()">Добавить</button>
     </div></div>
 </div>
@@ -300,6 +516,7 @@
       <button class="btn danger" id="confirm-ok">OK</button>
     </div></div>
 </div>
+
 <div class="toast" id="toast"></div>
 
 <script src="app.js"></script>
