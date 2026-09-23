@@ -9,19 +9,24 @@
 <meta name="theme-color" content="#007aff">
 <link rel="manifest" href="manifest.json">
 <link rel="apple-touch-icon" href="icon.png">
-<title>Cards</title>
+<title>Cards — Пингвин</title>
 <style>
   :root {
     --bg: #f5f5f7; --card-bg: #ffffff; --text: #1c1c1e; --sub: #8e8e93;
     --line: #e5e5ea; --accent: #007aff; --good: #34c759; --bad: #ff3b30;
-    --star: #ffcc00; --warn: #ff9500; --gold: #ffcc00;
+    --star: #ffcc00; --warn: #ff9500; --gold: #ffd60a;
     --grad1: #007aff; --grad2: #5856d6;
     --nav-bg: rgba(255,255,255,0.92);
+    --ice1: #a8e6ff; --ice2: #4fc3f7;
+    --lesson-locked: #d1d1d6;
+    --lesson-current: #ff9500;
+    --lesson-done: #ffd60a;
   }
   @media (prefers-color-scheme: dark) {
     :root {
       --bg: #000; --card-bg: #1c1c1e; --text: #fff; --line: #2c2c2e;
       --accent: #0a84ff; --nav-bg: rgba(28,28,30,0.92);
+      --lesson-locked: #3a3a3c;
     }
   }
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -30,25 +35,28 @@
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
     background: var(--bg); color: var(--text);
     user-select:none; -webkit-user-select:none;
-    transition: background 0.3s, color 0.3s;
   }
   #app { height: 100dvh; display: flex; flex-direction: column;
-    padding-top: env(safe-area-inset-top);
-    position: relative; z-index: 1; }
+    padding-top: env(safe-area-inset-top); position: relative; z-index: 1; }
 
-  /* ---------- ПРЕЛОАДЕР / SPLASH ---------- */
+  /* ---------- ПРЕЛОАДЕР ---------- */
   #preloader {
     position: fixed; inset: 0; z-index: 9999;
-    background: linear-gradient(180deg, #0a0a12, #1a1a2e);
+    background: linear-gradient(180deg, #0a1a2a, #1a3a5c);
     display: flex; flex-direction: column; align-items: center; justify-content: center;
     color: #fff; transition: opacity 0.5s ease;
   }
   #preloader.hide { opacity: 0; pointer-events: none; }
-  #preloader .logo { font-size: 90px; margin-bottom: 20px; animation: pulse 1.2s infinite ease-in-out; }
-  #preloader .name { font-size: 34px; font-weight: 800; letter-spacing: 3px; margin-bottom: 8px; }
-  #preloader .sub { font-size: 13px; color: rgba(255,255,255,0.5); animation: fadeInOut 1.4s infinite; }
-  @keyframes pulse { 0%,100% { transform: scale(1); } 50% { transform: scale(1.15); } }
-  @keyframes fadeInOut { 0%,100% { opacity: 0.4; } 50% { opacity: 1; } }
+  #preloader .logo { font-size: 100px; margin-bottom: 16px;
+    animation: penguinBounce 1.2s infinite ease-in-out; }
+  @keyframes penguinBounce {
+    0%, 100% { transform: translateY(0) rotate(0); }
+    50% { transform: translateY(-15px) rotate(-5deg); }
+  }
+  #preloader .name { font-size: 34px; font-weight: 800; letter-spacing: 3px; margin-bottom: 8px;
+    background: linear-gradient(135deg, var(--ice1), var(--ice2));
+    -webkit-background-clip: text; background-clip: text; color: transparent; }
+  #preloader .sub { font-size: 13px; color: rgba(255,255,255,0.6); }
 
   /* ---------- ЭКРАНЫ ---------- */
   .screen { display: none; flex-direction: column; height: 100%; flex: 1; min-height: 0; }
@@ -57,7 +65,7 @@
 
   header { padding: 12px 16px; display: flex; align-items: center; gap: 10px;
     background: var(--card-bg); border-bottom: 1px solid var(--line); min-height: 52px; flex-shrink: 0; }
-  header h1 { font-size: 19px; margin: 0; flex: 1; font-weight: 600;
+  header h1 { font-size: 19px; margin: 0; flex: 1; font-weight: 700;
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .btn { background: var(--accent); color: #fff; border: none; border-radius: 10px;
     padding: 10px 16px; font-size: 15px; font-weight: 600; cursor: pointer;
@@ -72,7 +80,7 @@
     padding: 6px 10px; cursor: pointer; border-radius: 8px; }
   .btn-icon:active { background: var(--line); }
   .back-btn { background: none; border: none; color: var(--accent); font-size: 17px;
-    padding: 6px 4px; cursor: pointer; font-weight: 500; flex-shrink: 0; }
+    padding: 6px 4px; cursor: pointer; font-weight: 600; flex-shrink: 0; }
   .back-btn:active { opacity: 0.5; }
 
   /* ---------- СПИСКИ ---------- */
@@ -86,39 +94,105 @@
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .list-item .sub { font-size: 13px; color: var(--sub); }
   .delete-x { color: var(--bad); font-size: 22px; padding: 0 8px; cursor: pointer; flex-shrink: 0; }
-  .stat-bar { height: 4px; background: var(--line); border-radius: 2px; margin-top: 8px;
-    overflow: hidden; }
+  .stat-bar { height: 4px; background: var(--line); border-radius: 2px; margin-top: 8px; overflow: hidden; }
   .stat-bar > div { height: 100%; background: linear-gradient(90deg, var(--grad1), var(--grad2));
     transition: width 0.4s; border-radius: 2px; }
   .empty { text-align: center; color: var(--sub); padding: 40px 20px; font-size: 15px; }
 
-  /* ---------- НИЖНЯЯ ПАНЕЛЬ ---------- */
+  /* ---------- НИЖНИЕ ПАНЕЛИ ---------- */
   .bottom-bar {
-    padding: 12px 16px;
-    background: var(--card-bg); border-top: 1px solid var(--line);
+    padding: 12px 16px; background: var(--card-bg); border-top: 1px solid var(--line);
     display: flex; gap: 10px; flex-shrink: 0; z-index: 10;
   }
   .bottom-bar .btn { flex: 1; }
 
-  /* ---------- ГЛАВНАЯ НАВИГАЦИЯ СНИЗУ ---------- */
   #main-nav {
     display: flex; justify-content: space-around; align-items: center;
-    background: var(--nav-bg); backdrop-filter: blur(20px);
-    -webkit-backdrop-filter: blur(20px);
+    background: var(--nav-bg); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
     border-top: 1px solid var(--line);
     padding: 6px 0 calc(6px + env(safe-area-inset-bottom));
     flex-shrink: 0; z-index: 100;
   }
-  #main-nav.hidden { display: none; }
-  .nav-btn {
-    background: none; border: none; color: var(--sub);
-    font-size: 11px; padding: 6px 16px; cursor: pointer;
-    display: flex; flex-direction: column; align-items: center; gap: 2px;
-    transition: color 0.2s;
-  }
+  .nav-btn { background: none; border: none; color: var(--sub); font-size: 11px;
+    padding: 6px 16px; cursor: pointer; display: flex; flex-direction: column;
+    align-items: center; gap: 2px; transition: color 0.2s; }
   .nav-btn .nav-icon { font-size: 22px; }
   .nav-btn.active { color: var(--accent); }
   .nav-btn:active { transform: scale(0.94); }
+
+  /* ---------- ТРОПА ---------- */
+  .trail-wrap { flex: 1; overflow-y: auto; padding: 16px 12px 40px; min-height: 0; }
+  .trail-header {
+    text-align: center; padding: 20px 16px 24px;
+    background: linear-gradient(135deg, var(--ice1), var(--ice2));
+    border-radius: 20px; margin-bottom: 24px;
+    color: #0a2a3a;
+  }
+  .trail-penguin { font-size: 80px; margin-bottom: 8px;
+    animation: penguinBounce 2s infinite ease-in-out; }
+  .trail-phrase { font-size: 15px; font-weight: 600; line-height: 1.4; max-width: 280px;
+    margin: 0 auto; }
+
+  .trail-path { position: relative; padding: 20px 0; }
+  .trail-node {
+    display: flex; align-items: center; justify-content: center;
+    margin-bottom: 20px; position: relative;
+  }
+  .trail-node .line {
+    position: absolute; width: 4px; background: var(--lesson-locked);
+    top: -20px; bottom: -20px; left: 50%; transform: translateX(-50%);
+    z-index: 0; border-radius: 2px; opacity: 0.3;
+  }
+  .trail-node:first-child .line { display: none; }
+  .trail-node.done .line { background: var(--lesson-done); opacity: 0.5; }
+
+  .lesson-circle {
+    width: 80px; height: 80px; border-radius: 50%;
+    background: var(--card-bg); border: 4px solid var(--lesson-locked);
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    cursor: pointer; position: relative; z-index: 1;
+    transition: all 0.3s; font-weight: 700;
+    box-shadow: 0 4px 0 rgba(0,0,0,0.1);
+  }
+  .lesson-circle .lesson-icon { font-size: 26px; line-height: 1; }
+  .lesson-circle .lesson-num { font-size: 11px; color: var(--sub); margin-top: 2px; }
+  .lesson-circle.locked { opacity: 0.5; cursor: not-allowed; }
+  .lesson-circle.current {
+    border-color: var(--lesson-current);
+    animation: currentPulse 1.5s infinite;
+    box-shadow: 0 0 0 0 rgba(255,149,0,0.5);
+  }
+  @keyframes currentPulse {
+    0% { box-shadow: 0 0 0 0 rgba(255,149,0,0.6); }
+    70% { box-shadow: 0 0 0 20px rgba(255,149,0,0); }
+    100% { box-shadow: 0 0 0 0 rgba(255,149,0,0); }
+  }
+  .lesson-circle.done {
+    border-color: var(--lesson-done); background: linear-gradient(135deg, #fff9c4, #ffd60a);
+    color: #8a6d00;
+  }
+  .lesson-circle:active:not(.locked) { transform: scale(0.94); }
+
+  .lesson-label {
+    position: absolute; left: 110px; right: 12px;
+    font-size: 13px; color: var(--sub); pointer-events: none;
+  }
+  .lesson-label .title { color: var(--text); font-weight: 600; font-size: 15px; }
+  .lesson-label .sub { font-size: 12px; margin-top: 2px; }
+
+  /* ---------- ВКЛАДКИ ---------- */
+  .tabs {
+    display: flex; background: var(--card-bg);
+    border-bottom: 1px solid var(--line); flex-shrink: 0;
+  }
+  .tab {
+    flex: 1; padding: 12px 8px; text-align: center; cursor: pointer;
+    font-size: 14px; font-weight: 600; color: var(--sub);
+    border-bottom: 3px solid transparent; transition: all 0.2s;
+    background: none; border-top: none; border-left: none; border-right: none;
+  }
+  .tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+  .tab:active { background: var(--line); }
 
   /* ---------- КАРТОЧКИ ---------- */
   .card-area { flex: 1; display: flex; align-items: center; justify-content: center;
@@ -132,7 +206,7 @@
     animation: cardPulse 3s infinite ease-in-out; }
   @keyframes cardPulse {
     0%, 100% { box-shadow: 0 8px 30px rgba(0,0,0,0.12); }
-    50% { box-shadow: 0 12px 40px rgba(0,122,255,0.18); }
+    50% { box-shadow: 0 12px 40px rgba(10,132,255,0.18); }
   }
   .card .word { font-size: 30px; font-weight: 700; word-break: break-word; line-height: 1.25; }
   .card .meta { position: absolute; top: 16px; left: 16px; right: 16px;
@@ -175,16 +249,16 @@
     transition: width 0.3s; border-radius: 3px; }
   .progress-text { display: flex; justify-content: space-between; font-size: 12px; color: var(--sub); }
 
-  .study-actions { display: flex; gap: 10px; padding: 12px 16px;
-    flex-shrink: 0; }
+  .study-actions { display: flex; gap: 10px; padding: 12px 16px; flex-shrink: 0; }
   .study-actions .btn { flex: 1; padding: 16px; font-size: 16px; }
 
-  /* ---------- БЫСТРЫЙ ТЕСТ ---------- */
+  /* ---------- ТЕСТ / АУДИО / СКОРОСТНОЙ ---------- */
   .quiz-question { font-size: 28px; font-weight: 700; text-align: center;
     padding: 20px 20px 10px; min-height: 100px; display: flex;
     flex-direction: column; align-items: center; justify-content: center; gap: 8px; }
   .quiz-timer { font-size: 14px; color: var(--sub); font-weight: 500; }
   .quiz-timer.urgent { color: var(--bad); animation: pulse 0.5s infinite; }
+  @keyframes pulse { 0%,100% { transform: scale(1); } 50% { transform: scale(1.15); } }
   .quiz-options { flex: 1; display: flex; flex-direction: column; gap: 10px;
     padding: 0 20px 20px; overflow-y: auto; }
   .quiz-option { background: var(--card-bg); border: 2px solid var(--line);
@@ -210,28 +284,23 @@
     opacity: 0.4; pointer-events: none; }
   .match-tile.wrong { animation: badAnim 0.4s; border-color: var(--bad); }
 
-  /* ---------- АУДИО-РЕЖИМ ---------- */
   .audio-stage { flex: 1; display: flex; flex-direction: column;
     align-items: center; justify-content: center; padding: 20px; gap: 30px; }
   .audio-btn { width: 140px; height: 140px; border-radius: 50%;
-    background: linear-gradient(135deg, var(--grad1), var(--grad2));
+    background: linear-gradient(135deg, var(--ice1), var(--ice2));
     color: #fff; font-size: 60px; border: none; cursor: pointer;
-    box-shadow: 0 8px 30px rgba(0,122,255,0.4);
+    box-shadow: 0 8px 30px rgba(79,195,247,0.4);
     transition: transform 0.15s; animation: pulse 2s infinite; }
   .audio-btn:active { transform: scale(0.94); }
   .audio-btn.playing { animation: pulseFast 0.5s infinite; }
   @keyframes pulseFast { 0%,100% { transform: scale(1); } 50% { transform: scale(1.08); } }
   .audio-hint { font-size: 14px; color: var(--sub); text-align: center; }
 
-  /* ---------- СКОРОСТНОЙ РЕЖИМ ---------- */
   .speed-timer { text-align: center; font-size: 48px; font-weight: 800;
     padding: 12px; background: linear-gradient(135deg, var(--grad1), var(--grad2));
     -webkit-background-clip: text; background-clip: text; color: transparent; }
   .speed-timer.urgent { animation: pulse 0.6s infinite; }
   .speed-score { text-align: center; font-size: 14px; color: var(--sub); margin-bottom: 8px; }
-
-  /* ---------- МИКС ---------- */
-  .mix-info { text-align: center; padding: 20px; color: var(--sub); font-size: 14px; }
 
   /* ---------- МОДАЛКИ ---------- */
   .modal-bg { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5);
@@ -260,9 +329,10 @@
   .toast.show { opacity: 1; }
 
   /* ---------- ПРОФИЛЬ ---------- */
-  .profile-header { background: linear-gradient(135deg, var(--grad1), var(--grad2));
+  .profile-header { background: linear-gradient(135deg, var(--ice2), var(--grad2));
     color: #fff; padding: 24px 20px; text-align: center; }
-  .profile-avatar { font-size: 64px; margin-bottom: 8px; }
+  .profile-avatar { font-size: 64px; margin-bottom: 8px;
+    animation: penguinBounce 2s infinite ease-in-out; }
   .profile-level { font-size: 22px; font-weight: 800; margin-bottom: 2px; }
   .profile-title { font-size: 14px; opacity: 0.9; margin-bottom: 16px; }
   .profile-xp { font-size: 15px; font-weight: 600; margin-bottom: 6px; }
@@ -271,7 +341,6 @@
   .xp-bar > div { height: 100%; background: #fff; transition: width 0.4s; border-radius: 4px; }
   .xp-text { font-size: 12px; opacity: 0.9; }
 
-  /* ---------- ЕЖЕДНЕВКА ---------- */
   .daily-ring { display: flex; align-items: center; justify-content: center;
     padding: 16px; gap: 20px; }
   .daily-ring svg { width: 90px; height: 90px; transform: rotate(-90deg); }
@@ -285,7 +354,6 @@
     -webkit-background-clip: text; background-clip: text; color: transparent; }
   .daily-info .small { font-size: 13px; color: var(--sub); margin-top: 2px; }
 
-  /* ---------- АЧИВКИ ---------- */
   .achievements-grid { display: grid; grid-template-columns: repeat(3, 1fr);
     gap: 10px; padding: 12px; }
   .ach-card { background: var(--card-bg); border-radius: 14px; padding: 12px 8px;
@@ -295,7 +363,6 @@
   .ach-card .ach-name { font-size: 11px; font-weight: 600; line-height: 1.2; color: var(--text); }
   .ach-card .ach-desc { font-size: 9px; color: var(--sub); margin-top: 2px; }
 
-  /* ---------- КАЛЕНДАРЬ ---------- */
   .heatmap { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px;
     padding: 16px; max-width: 320px; margin: 0 auto; }
   .heat-cell { aspect-ratio: 1; border-radius: 4px; background: var(--line); }
@@ -307,12 +374,10 @@
     gap: 4px; padding: 0 16px 16px; font-size: 11px; color: var(--sub); }
   .heat-legend .heat-cell { width: 14px; height: 14px; aspect-ratio: auto; }
 
-  /* ---------- КОНФЕТТИ ---------- */
   .confetti { position: fixed; width: 10px; height: 10px; top: -20px;
     z-index: 1500; pointer-events: none; animation: fall linear forwards; }
   @keyframes fall { to { transform: translateY(110vh) rotate(720deg); opacity: 0; } }
 
-  /* ---------- ФИНАЛЬНЫЙ ЭКРАН ---------- */
   #screen-finish { justify-content: center; align-items: center; padding: 30px; text-align: center; }
   .finish-emoji { font-size: 80px; margin-bottom: 20px; animation: pulse 1s infinite; }
   .finish-title { font-size: 28px; font-weight: 800; margin-bottom: 16px; }
@@ -328,9 +393,7 @@
   .finish-actions { display: flex; gap: 10px; width: 100%; max-width: 320px; }
   .finish-actions .btn { flex: 1; padding: 16px; }
 
-  /* ---------- ВЫБОР РЕЖИМА ---------- */
-  .mode-picker { display: flex; flex-direction: column; gap: 10px; padding: 12px;
-    overflow-y: auto; }
+  .mode-picker { display: flex; flex-direction: column; gap: 10px; padding: 12px; overflow-y: auto; }
   .mode-btn { background: var(--card-bg); border: 2px solid var(--line);
     border-radius: 14px; padding: 16px; text-align: left; cursor: pointer;
     transition: all 0.15s; color: var(--text); position: relative; }
@@ -344,7 +407,6 @@
     background: var(--warn); color: #fff; padding: 4px 10px; border-radius: 12px;
     font-size: 11px; font-weight: 700; }
 
-  /* ---------- НАСТРОЙКИ ---------- */
   .settings-row { display: flex; align-items: center; justify-content: space-between;
     padding: 16px; background: var(--card-bg); border-radius: 12px; margin-bottom: 8px; }
   .settings-row .lbl { font-size: 15px; }
@@ -358,13 +420,11 @@
   .switch input:checked + .slider { background: var(--good); }
   .switch input:checked + .slider:before { transform: translateX(20px); }
 
-  /* ---------- БЕЙДЖИ ---------- */
   .badge { display: inline-block; padding: 2px 8px; border-radius: 10px;
     background: var(--line); font-size: 11px; color: var(--sub); margin-left: 6px; }
   .badge.ok { background: rgba(52,199,89,0.15); color: var(--good); }
   .badge.bad { background: rgba(255,59,48,0.15); color: var(--bad); }
 
-  /* ---------- СТАТИСТИКА ---------- */
   .stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; padding: 12px; }
   .stat-card { background: var(--card-bg); border-radius: 14px; padding: 16px; text-align: center; }
   .stat-card .num { font-size: 28px; font-weight: 800;
@@ -377,9 +437,8 @@
 </head>
 <body>
 
-<!-- ПРЕЛОАДЕР -->
 <div id="preloader">
-  <div class="logo">🎴</div>
+  <div class="logo">🐧</div>
   <div class="name">Cards</div>
   <div class="sub">Загрузка...</div>
 </div>
@@ -398,24 +457,38 @@
     </div>
   </div>
 
-  <!-- ПАПКИ -->
-  <div class="screen" id="screen-folders">
+  <!-- ТРОПА ЯЗЫКА -->
+  <div class="screen" id="screen-trail">
     <header>
       <button class="back-btn" onclick="goLangs()">‹ Назад</button>
-      <h1 id="folders-title"></h1>
+      <h1 id="trail-title"></h1>
     </header>
-    <div class="list" id="folders-list"></div>
-    <div class="bottom-bar">
-      <button class="btn" onclick="openAddFolder()">+ Добавить папку</button>
+    <div class="tabs">
+      <button class="tab active" id="tab-trail" onclick="switchTab('trail')">🌳 Тропа</button>
+      <button class="tab" id="tab-mine" onclick="switchTab('mine')">📁 Мои папки</button>
+    </div>
+    <div class="trail-wrap" id="tab-content-trail">
+      <div class="trail-header">
+        <div class="trail-penguin" id="trail-penguin">🐧</div>
+        <div class="trail-phrase" id="trail-phrase">Привет! Готов учиться?</div>
+      </div>
+      <div class="trail-path" id="trail-path"></div>
+    </div>
+    <div class="trail-wrap" id="tab-content-mine" style="display:none;">
+      <div class="list" id="mine-list"></div>
+      <div class="bottom-bar" style="position:sticky;bottom:0;">
+        <button class="btn secondary" style="flex:1;" onclick="openImportCSV()">📥 Импорт CSV</button>
+        <button class="btn" style="flex:1;" onclick="openAddFolder()">+ Свои слова</button>
+      </div>
     </div>
   </div>
 
-  <!-- КАРТОЧКИ -->
+  <!-- КАРТОЧКИ ПАПКИ -->
   <div class="screen" id="screen-cards">
     <header>
-      <button class="back-btn" onclick="goFolders()">‹ Назад</button>
+      <button class="back-btn" onclick="goTrail()">‹ Назад</button>
       <h1 id="cards-title"></h1>
-      <button class="btn-icon" onclick="openBulkAdd()" title="Добавить слова">+</button>
+      <button class="btn-icon" onclick="openBulkAdd()" title="Редактировать">✏️</button>
     </header>
     <div class="list" id="cards-list"></div>
     <div class="bottom-bar">
@@ -433,13 +506,13 @@
     <div class="mode-picker" id="mode-picker"></div>
   </div>
 
-  <!-- КЛАССИЧЕСКАЯ УЧЁБА -->
+  <!-- КЛАССИКА -->
   <div class="screen" id="screen-study">
     <header>
-      <button class="back-btn" onclick="goCards()">‹ Выйти</button>
+      <button class="back-btn" onclick="exitStudy()">‹ Выйти</button>
       <h1 id="study-title"></h1>
-      <button class="btn-icon" onclick="toggleReverse()" id="reverse-btn" title="Обратный режим">🔄</button>
-      <button class="btn-icon" onclick="shuffleDeck()" title="Перемешать">↻</button>
+      <button class="btn-icon" onclick="toggleReverse()" id="reverse-btn">🔄</button>
+      <button class="btn-icon" onclick="shuffleDeck()">↻</button>
       <button class="btn-icon" onclick="toggleStar()" id="star-btn">☆</button>
     </header>
     <div class="progress-wrap">
@@ -453,7 +526,7 @@
       <div class="card" id="card">
         <div class="meta"><span id="card-count"></span><span id="card-mark"></span></div>
         <div class="word" id="card-word"></div>
-        <button class="speak" onclick="speakCurrent(event)" title="Озвучить">🔊</button>
+        <button class="speak" onclick="speakCurrent(event)">🔊</button>
         <div class="hint" id="card-hint">Нажмите, чтобы перевернуть</div>
       </div>
     </div>
@@ -464,10 +537,10 @@
     <div class="swipe-hint">Свайп влево — не знаю · вправо — знаю</div>
   </div>
 
-  <!-- БЫСТРЫЙ ТЕСТ -->
+  <!-- ТЕСТ -->
   <div class="screen" id="screen-quiz">
     <header>
-      <button class="back-btn" onclick="goCards()">‹ Выйти</button>
+      <button class="back-btn" onclick="exitStudy()">‹ Выйти</button>
       <h1 id="quiz-title"></h1>
     </header>
     <div class="progress-wrap">
@@ -487,7 +560,7 @@
   <!-- СОПОСТАВЛЕНИЕ -->
   <div class="screen" id="screen-match">
     <header>
-      <button class="back-btn" onclick="goCards()">‹ Выйти</button>
+      <button class="back-btn" onclick="exitStudy()">‹ Выйти</button>
       <h1 id="match-title"></h1>
     </header>
     <div class="progress-wrap">
@@ -503,10 +576,10 @@
     </div>
   </div>
 
-  <!-- АУДИО-РЕЖИМ -->
+  <!-- АУДИО -->
   <div class="screen" id="screen-audio">
     <header>
-      <button class="back-btn" onclick="goCards()">‹ Выйти</button>
+      <button class="back-btn" onclick="exitStudy()">‹ Выйти</button>
       <h1 id="audio-title"></h1>
     </header>
     <div class="progress-wrap">
@@ -523,10 +596,10 @@
     <div class="quiz-options" id="audio-options"></div>
   </div>
 
-  <!-- СКОРОСТНОЙ РЕЖИМ -->
+  <!-- СКОРОСТНОЙ -->
   <div class="screen" id="screen-speed">
     <header>
-      <button class="back-btn" onclick="goCards()">‹ Выйти</button>
+      <button class="back-btn" onclick="exitStudy()">‹ Выйти</button>
       <h1 id="speed-title">🚀 Скоростной</h1>
     </header>
     <div class="speed-timer" id="speed-timer">60</div>
@@ -538,15 +611,14 @@
   <!-- МИКС -->
   <div class="screen" id="screen-mix">
     <header>
-      <button class="back-btn" onclick="goCards()">‹ Выйти</button>
+      <button class="back-btn" onclick="exitStudy()">‹ Выйти</button>
       <h1 id="mix-title">🌪 Микс</h1>
     </header>
-    <div class="mix-info" id="mix-info"></div>
     <div class="card-area">
       <div class="card" id="mix-card">
         <div class="meta"><span id="mix-count"></span><span id="mix-source"></span></div>
         <div class="word" id="mix-word"></div>
-        <button class="speak" onclick="speakMix(event)" title="Озвучить">🔊</button>
+        <button class="speak" onclick="speakMix(event)">🔊</button>
         <div class="hint" id="mix-hint">Нажмите, чтобы перевернуть</div>
       </div>
     </div>
@@ -556,9 +628,9 @@
     </div>
   </div>
 
-  <!-- ФИНАЛЬНЫЙ ЭКРАН -->
+  <!-- ФИНАЛ -->
   <div class="screen" id="screen-finish">
-    <div class="finish-emoji" id="finish-emoji">🎉</div>
+    <div class="finish-emoji" id="finish-emoji">🐧</div>
     <div class="finish-title" id="finish-title">Урок завершён!</div>
     <div class="finish-xp" id="finish-xp">+0 XP</div>
     <div class="finish-stats">
@@ -567,16 +639,14 @@
       <div class="finish-stat"><div class="num" id="finish-pct">0%</div><div class="lbl">Успех</div></div>
     </div>
     <div class="finish-actions">
-      <button class="btn secondary" onclick="goCards()">Выйти</button>
+      <button class="btn secondary" onclick="exitStudy()">Выйти</button>
       <button class="btn" onclick="repeatLesson()">Повторить</button>
     </div>
   </div>
 
   <!-- ПРОФИЛЬ -->
   <div class="screen" id="screen-profile">
-    <header>
-      <h1>Профиль</h1>
-    </header>
+    <header><h1>Профиль</h1></header>
     <div class="list" id="profile-content"></div>
   </div>
 
@@ -607,17 +677,13 @@
     <div class="list">
       <div class="section-title">Обучение</div>
       <div class="settings-row">
-        <div>
-          <div class="lbl">Интервальное повторение (SRS)</div>
-          <div class="val">Сложные слова — чаще</div>
-        </div>
+        <div><div class="lbl">Интервальное повторение (SRS)</div>
+        <div class="val">Сложные слова — чаще</div></div>
         <label class="switch"><input type="checkbox" id="srs-toggle" onchange="toggleSRS()"><span class="slider"></span></label>
       </div>
       <div class="settings-row">
-        <div>
-          <div class="lbl">Ежедневная цель</div>
-          <div class="val" id="daily-goal-val">20 слов</div>
-        </div>
+        <div><div class="lbl">Ежедневная цель</div>
+        <div class="val" id="daily-goal-val">20 слов</div></div>
         <button class="btn secondary" style="padding:6px 12px;font-size:13px;" onclick="changeDailyGoal()">Изменить</button>
       </div>
       <div class="section-title">Звук и вибрация</div>
@@ -634,9 +700,12 @@
         <div class="lbl">💾 Экспорт в файл</div><div class="val">›</div>
       </div>
       <div class="settings-row" onclick="document.getElementById('import-file').click()">
-        <div class="lbl">📥 Импорт из файла</div><div class="val">›</div>
+        <div class="lbl">📥 Импорт из бэкапа</div><div class="val">›</div>
       </div>
       <input type="file" id="import-file" accept=".json" style="display:none" onchange="importData(event)">
+      <div class="settings-row" onclick="resetTrailProgress()">
+        <div class="lbl" style="color:var(--warn)">🌳 Сбросить прогресс тропы</div><div class="val">›</div>
+      </div>
       <div class="settings-row" onclick="resetStats()">
         <div class="lbl" style="color:var(--warn)">📊 Сбросить статистику</div><div class="val">›</div>
       </div>
@@ -646,15 +715,13 @@
     </div>
   </div>
 
-  <!-- ГЛАВНАЯ НАВИГАЦИЯ -->
+  <!-- НАВИГАЦИЯ -->
   <nav id="main-nav">
     <button class="nav-btn active" id="nav-langs" onclick="navTo('langs')">
-      <span class="nav-icon">🏠</span>
-      <span>Языки</span>
+      <span class="nav-icon">🏠</span><span>Языки</span>
     </button>
     <button class="nav-btn" id="nav-profile" onclick="navTo('profile')">
-      <span class="nav-icon">🏆</span>
-      <span>Профиль</span>
+      <span class="nav-icon">🏆</span><span>Профиль</span>
     </button>
   </nav>
 
@@ -663,20 +730,24 @@
 <!-- МОДАЛКИ -->
 <div class="modal-bg" id="modal-lang">
   <div class="modal"><h2>Новый язык</h2>
-    <input type="text" id="lang-input" placeholder="Например: Испанский 🇪🇸" autocomplete="off">
+    <div class="help-text" style="margin-bottom:10px;">Доступны готовые темы: 🇪🇸 Испанский, 🇬🇧 Английский, 🇩🇪 Немецкий, 🇫🇷 Французский, 🇮🇹 Итальянский.<br>Или создай свой язык — он будет пустым, заполнишь сам.</div>
+    <input type="text" id="lang-input" placeholder="Например: Испанский" autocomplete="off">
     <div class="modal-actions">
       <button class="btn secondary" onclick="closeModal('modal-lang')">Отмена</button>
       <button class="btn" onclick="saveLang()">Сохранить</button>
     </div></div>
 </div>
+
 <div class="modal-bg" id="modal-folder">
-  <div class="modal"><h2>Новая папка</h2>
-    <input type="text" id="folder-input" placeholder="Например: Глаголы" autocomplete="off">
+  <div class="modal"><h2>Свои слова — новая папка</h2>
+    <div class="help-text" style="margin-bottom:10px;">Папка появится на вкладке «Мои папки». Сюда же можно импортировать CSV.</div>
+    <input type="text" id="folder-input" placeholder="Например: Мои фразы" autocomplete="off">
     <div class="modal-actions">
       <button class="btn secondary" onclick="closeModal('modal-folder')">Отмена</button>
       <button class="btn" onclick="saveFolder()">Сохранить</button>
     </div></div>
 </div>
+
 <div class="modal-bg" id="modal-bulk">
   <div class="modal"><h2>Слова и переводы</h2>
     <div class="help-text" style="margin-bottom:10px;">Каждая строка — карточка. Формат: <b>слово | перевод</b>.<br>Разделители: <b>|</b>, Tab, <b>—</b>, <b>;</b>, <b>,</b></div>
@@ -687,6 +758,7 @@
       <button class="btn" onclick="addBulk()">Добавить</button>
     </div></div>
 </div>
+
 <div class="modal-bg" id="modal-confirm">
   <div class="modal"><h2 id="confirm-title">Подтверждение</h2>
     <p id="confirm-text" style="font-size:15px;line-height:1.5;"></p>
@@ -695,13 +767,28 @@
       <button class="btn danger" id="confirm-ok">OK</button>
     </div></div>
 </div>
+
 <div class="modal-bg" id="modal-goal">
   <div class="modal"><h2>Ежедневная цель</h2>
-    <div class="help-text" style="margin-bottom:10px;">Сколько слов в день ты хочешь проходить?</div>
     <input type="number" id="goal-input" min="5" max="200" step="5" value="20">
     <div class="modal-actions">
       <button class="btn secondary" onclick="closeModal('modal-goal')">Отмена</button>
       <button class="btn" onclick="saveDailyGoal()">Сохранить</button>
+    </div></div>
+</div>
+
+<div class="modal-bg" id="modal-csv">
+  <div class="modal"><h2>📥 Импорт CSV</h2>
+    <div class="help-text" style="margin-bottom:14px;">
+      Выбери файл <b>.csv</b>, <b>.txt</b> или <b>.tsv</b>.<br>
+      Формат строки: <b>слово,перевод</b> или <b>слово | перевод</b>.<br>
+      Каждый новый импорт <b>добавляется</b> как новая папка — старые сохраняются.
+    </div>
+    <input type="file" id="csv-file" accept=".csv,.txt,.tsv" style="display:none" onchange="handleCSV(event)">
+    <input type="text" id="csv-name" placeholder="Название папки (необязательно)" autocomplete="off">
+    <div class="modal-actions">
+      <button class="btn secondary" onclick="closeModal('modal-csv')">Отмена</button>
+      <button class="btn" onclick="document.getElementById('csv-file').click()">Выбрать файл</button>
     </div></div>
 </div>
 
@@ -716,6 +803,8 @@
   </defs>
 </svg>
 
+<script src="penguin.js"></script>
+<script src="themes.js"></script>
 <script src="app.js"></script>
 </body>
 </html>
