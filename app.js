@@ -1,7 +1,6 @@
 /* ============================================================
-   Cards App v7.0 — Часть 1
-   Данные, навигация, тропа, языки, уроки, классика, тест, XP,
-   монеты, streak, ачивки, бэкапы, онбординг
+   Cards App v7.1 — Часть 1
+   Фиксы: обуз, звуки iOS, двойной XP, микс, фото, пропуск урока
    ============================================================ */
 
 const STORE_KEY = 'cards_app_data_v7';
@@ -10,7 +9,6 @@ const OLD_KEY_V5 = 'cards_app_data_v5';
 const BACKUP_KEY_PREFIX = 'cards_backup_';
 const MAX_BACKUPS = 7;
 
-/* ---------- ДАННЫЕ ПО УМОЛЧАНИЮ ---------- */
 function defaultData() {
   return {
     langs: [],
@@ -18,7 +16,6 @@ function defaultData() {
   };
 }
 
-/* ---------- ЗАГРУЗКА ---------- */
 function load() {
   try {
     let raw = localStorage.getItem(STORE_KEY) ||
@@ -29,8 +26,6 @@ function load() {
       const def = defaultData();
       d.settings = Object.assign({}, def.settings, d.settings || {});
       d.langs = d.langs || [];
-
-      // Миграция данных
       d.langs.forEach(l => {
         if (!l.lessons) l.lessons = [];
         if (!l.folders) l.folders = l.folders || [];
@@ -44,14 +39,13 @@ function load() {
           else if (n.includes('итал') || n.includes('ital')) l.locale = 'it-IT';
           else l.locale = 'en-US';
         }
-        // Миграция карточек
         l.lessons.forEach(ls => {
           ls.cards.forEach(normalizeCard);
           if (ls.completed === undefined) ls.completed = false;
         });
         l.folders.forEach(f => f.cards.forEach(normalizeCard));
       });
-
+      if (!d.settings.manualExports) d.settings.manualExports = [];
       return d;
     }
   } catch (e) { console.error('Load error:', e); }
@@ -70,7 +64,6 @@ function normalizeCard(c) {
 }
 
 let data = load();
-
 function save() {
   try {
     localStorage.setItem(STORE_KEY, JSON.stringify(data));
@@ -104,9 +97,35 @@ let matchBatch = 5;
 let matchOffset = 0;
 let audioDeck = [], audioIndex = 0, audioLocked = false;
 let speedDeck = [], speedIndex = 0, speedScore = 0, speedTimer = null, speedTimeLeft = 45, speedLocked = false, speedTarget = 10, speedTotal = 0, speedType = 'fast';
-let mixDeck = [], mixIndex = 0, mixFlipped = false;
+let mixDeck = [], mixIndex = 0, mixFlipped = false, mixLocked = false;
 let lastLesson = null;
 let currentQuests = [];
+let actionLock = false; // ← ГЛОБАЛЬНАЯ ЗАЩИТА ОТ ОБУЗА
+
+/* ============================================================
+   ЗВУКИ — РАЗБУДКА iOS
+   ============================================================ */
+function wakeAudio() {
+  const ctx = getAudioContext();
+  if (ctx && ctx.state === 'suspended') {
+    ctx.resume().then(() => {
+      try {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        gain.gain.setValueAtTime(0.0001, ctx.currentTime);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start();
+        osc.stop(ctx.currentTime + 0.01);
+      } catch(e) {}
+    });
+  }
+}
+document.addEventListener('touchstart', wakeAudio);
+document.addEventListener('click', wakeAudio);
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') wakeAudio();
+});
 
 /* ============================================================
    ОНБОРДИНГ
@@ -132,9 +151,7 @@ function finishOnboarding() {
 function showOnboardingIfNeeded() {
   if (!data.settings.onboardingDone) {
     const ob = document.getElementById('onboarding');
-    if (ob) {
-      setTimeout(() => ob.classList.add('active'), 400);
-    }
+    if (ob) setTimeout(() => ob.classList.add('active'), 400);
   }
 }
 
@@ -150,15 +167,11 @@ function showScreen(id) {
 function updateNavHighlight(screenId) {
   document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
   const map = {
-    'screen-langs': 'nav-langs',
-    'screen-trail': 'nav-langs',
-    'screen-profile': 'nav-profile',
-    'screen-settings': 'nav-profile',
-    'screen-stats': 'nav-profile',
-    'screen-achievements': 'nav-profile',
+    'screen-langs': 'nav-langs', 'screen-trail': 'nav-langs',
+    'screen-profile': 'nav-profile', 'screen-settings': 'nav-profile',
+    'screen-stats': 'nav-profile', 'screen-achievements': 'nav-profile',
     'screen-backups': 'nav-profile',
-    'screen-shop': 'nav-shop',
-    'screen-avatars': 'nav-shop',
+    'screen-shop': 'nav-shop', 'screen-avatars': 'nav-shop',
     'screen-quests': 'nav-quests'
   };
   const navId = map[screenId];
@@ -175,44 +188,45 @@ function navTo(where) {
 }
 function goLangs() {
   currentLangId = null; currentFolderId = null; currentLessonId = null;
-  renderLangs();
-  showScreen('screen-langs');
-  updateQuestBadge();
+  renderLangs(); showScreen('screen-langs'); updateQuestBadge();
 }
 function goTrail() {
   currentFolderId = null; currentLessonId = null;
-  renderTrail();
-  showScreen('screen-trail');
+  renderTrail(); showScreen('screen-trail');
 }
 function goCards() {
-  if (currentLessonId) {
-    goTrail();
-    return;
-  }
-  renderCards();
-  showScreen('screen-cards');
+  if (currentLessonId) { goTrail(); return; }
+  renderCards(); showScreen('screen-cards');
 }
-function goProfile() {
-  renderProfile();
-  showScreen('screen-profile');
-}
+function goProfile() { renderProfile(); showScreen('screen-profile'); }
 
-/* ---------- ОБНОВЛЕНИЕ ШАПКИ ---------- */
 function updateHeaderStats() {
   const coins = document.getElementById('header-coins');
   const xp = document.getElementById('header-xp');
   const streak = document.getElementById('header-streak');
   if (coins) coins.textContent = '💰 ' + formatNumber(data.settings.totalCoins || 0);
-  if (xp) xp.textContent = '💎 ' + formatNumber(data.settings.totalXP || 0);
   if (streak) streak.textContent = '🔥 ' + (data.settings.streak || 0);
-
+  const doubleActive = data.settings.doubleXpActive &&
+                       data.settings.doubleXpUntil &&
+                       Date.now() < data.settings.doubleXpUntil;
+  if (xp) {
+    if (doubleActive) {
+      xp.style.background = 'linear-gradient(135deg, #ffd60a, #ff9500)';
+      xp.style.color = '#fff';
+      const mins = Math.ceil((data.settings.doubleXpUntil - Date.now()) / 60000);
+      xp.textContent = `💎 ${formatNumber(data.settings.totalXP || 0)} ×2 (${mins}м)`;
+    } else {
+      xp.style.background = '';
+      xp.style.color = '';
+      xp.textContent = '💎 ' + formatNumber(data.settings.totalXP || 0);
+    }
+  }
   const shopCoins = document.getElementById('shop-coins');
   if (shopCoins) shopCoins.textContent = formatNumber(data.settings.totalCoins || 0);
   const avatarsCoins = document.getElementById('avatars-coins');
   if (avatarsCoins) avatarsCoins.textContent = formatNumber(data.settings.totalCoins || 0);
 }
 
-/* ---------- БЕЙДЖ КВЕСТОВ ---------- */
 function updateQuestBadge() {
   const badge = document.getElementById('quests-badge');
   if (!badge) return;
@@ -229,7 +243,7 @@ function updateQuestBadge() {
 }
 
 /* ============================================================
-   XP, МОНЕТЫ, УРОВНИ
+   XP / МОНЕТЫ
    ============================================================ */
 function addXP(amount) {
   let final = amount;
@@ -278,15 +292,13 @@ function countStats() {
   let correct = 0, learned = 0, starred = 0, total = 0, lessonsDone = 0;
   data.langs.forEach(l => {
     (l.folders || []).forEach(f => f.cards.forEach(c => {
-      total++;
-      correct += c.correct || 0;
+      total++; correct += c.correct || 0;
       if (c.correct > 0 && c.correct >= c.wrong) learned++;
       if (c.star) starred++;
     }));
     (l.lessons || []).forEach(ls => {
       ls.cards.forEach(c => {
-        total++;
-        correct += c.correct || 0;
+        total++; correct += c.correct || 0;
         if (c.correct > 0 && c.correct >= c.wrong) learned++;
         if (c.star) starred++;
       });
@@ -304,7 +316,6 @@ function unlockAchievement(id) {
     toast(`🏆 ${a.name}!`, 2500);
     playSound('achievement');
     addCoins(COIN_REWARDS.achievementUnlock);
-    vibrate(30);
   }
   return true;
 }
@@ -314,7 +325,6 @@ function checkAchievements() {
   const streak = data.settings.streak || 0;
   const coins = data.settings.totalCoins || 0;
   const avatarsOwned = (data.settings.ownedAvatars || []).length;
-
   if (s.correct >= 1) unlockAchievement('first');
   if (s.correct >= 100) unlockAchievement('hundred');
   if (s.correct >= 1000) unlockAchievement('thousand');
@@ -376,13 +386,11 @@ function renderLangs() {
 function langStats(lang) {
   let total = 0, learned = 0, lessonsDone = 0, lessonsTotal = (lang.lessons || []).length;
   (lang.folders || []).forEach(f => f.cards.forEach(c => {
-    total++;
-    if (c.correct > 0 && c.correct >= c.wrong) learned++;
+    total++; if (c.correct > 0 && c.correct >= c.wrong) learned++;
   }));
   (lang.lessons || []).forEach(ls => {
     ls.cards.forEach(c => {
-      total++;
-      if (c.correct > 0 && c.correct >= c.wrong) learned++;
+      total++; if (c.correct > 0 && c.correct >= c.wrong) learned++;
     });
     if (ls.completed) lessonsDone++;
   });
@@ -390,7 +398,6 @@ function langStats(lang) {
   return { total, learned, pct, lessonsDone, lessonsTotal };
 }
 
-/* ---------- ДОБАВЛЕНИЕ ЯЗЫКА ---------- */
 function openAddLang() {
   const tplEl = document.getElementById('templates-list');
   if (tplEl) {
@@ -415,9 +422,7 @@ function addLangFromTemplate(key) {
   const lang = createLangFromTemplate(key);
   if (!lang) { toast('Не удалось создать язык'); return; }
   data.langs.push(lang);
-  save();
-  closeModal('modal-lang');
-  renderLangs();
+  save(); closeModal('modal-lang'); renderLangs();
   toast(`${lang.emoji} ${lang.name} добавлен! 🐧`);
   checkAchievements();
 }
@@ -425,24 +430,16 @@ function saveLang() {
   const name = document.getElementById('lang-input').value.trim();
   if (!name) return;
   data.langs.push({
-    id: uid(),
-    name,
-    emoji: '🌍',
-    locale: 'en-US',
-    isBuiltin: false,
-    lessons: [],
-    folders: []
+    id: uid(), name, emoji: '🌍', locale: 'en-US',
+    isBuiltin: false, lessons: [], folders: []
   });
-  save();
-  closeModal('modal-lang');
-  renderLangs();
+  save(); closeModal('modal-lang'); renderLangs();
   checkAchievements();
 }
 function confirmDeleteLang(id) {
   confirmDialog('Удалить язык?', 'Все уроки, папки и прогресс удалятся.', () => {
     data.langs = data.langs.filter(l => l.id !== id);
-    save();
-    renderLangs();
+    save(); renderLangs();
   });
 }
 
@@ -463,15 +460,9 @@ function switchTab(tab) {
 function renderTrail() {
   const lang = data.langs.find(l => l.id === currentLangId);
   if (!lang) { goLangs(); return; }
-
-  // Пингвин с фразой
   const phraseEl = document.getElementById('trail-phrase');
   if (phraseEl) phraseEl.textContent = penguinForTrail();
-
-  // Кнопка сундука
   updateTreasureButton();
-
-  // Тропа
   const pathEl = document.getElementById('trail-path');
   if (!pathEl) return;
   pathEl.innerHTML = '';
@@ -479,35 +470,55 @@ function renderTrail() {
     pathEl.innerHTML = `<div class="empty">${pickPenguin('empty')}</div>`;
     return;
   }
-
   const currentIdx = lang.lessons.findIndex(l => !l.completed);
   lang.lessons.forEach((lesson, idx) => {
     const isDone = lesson.completed;
     const isCurrent = idx === currentIdx;
     const isLocked = !isDone && !isCurrent && idx > currentIdx;
-
     const node = document.createElement('div');
     node.className = 'trail-node' + (isDone ? ' done' : '');
-
     let labelHtml = '';
     if (isCurrent || isDone) {
       labelHtml = `<div class="lesson-label">
         <div class="title">${lesson.themeEmoji || '📘'} ${esc(lesson.themeName)}</div>
-        <div class="sub">Урок ${lesson.lessonNum} из ${lesson.totalInTheme} · ${lesson.cards.length} слов</div>
+        <div class="sub">Урок ${lesson.lessonNum} · ${lesson.cards.length} слов</div>
       </div>`;
     }
-
     node.innerHTML = `
       <div class="line"></div>
       <div class="lesson-circle ${isLocked ? 'locked' : ''} ${isCurrent ? 'current' : ''} ${isDone ? 'done' : ''}"
-           onclick="${isLocked ? `toast('🔒 Сначала пройди предыдущие уроки')` : `openLesson('${lesson.id}')`}">
+           onclick="${isLocked ? `trySkipLesson('${lesson.id}')` : `openLesson('${lesson.id}')`}">
         <div class="lesson-icon">${isDone ? '⭐' : isLocked ? '🔒' : lesson.themeEmoji || '📘'}</div>
-        <div class="lesson-num">${lesson.themeName.substring(0, 3)} ${lesson.lessonNum}</div>
+        <div class="lesson-num">${lesson.lessonNum}/${lesson.totalInTheme}</div>
       </div>
       ${labelHtml}
     `;
     pathEl.appendChild(node);
   });
+}
+function trySkipLesson(lessonId) {
+  const coins = data.settings.totalCoins || 0;
+  const price = SHOP_PRICES.skipLesson;
+  if (coins < price) {
+    toast(`🔒 Нужно ${price} монет (у тебя ${coins})`);
+    return;
+  }
+  confirmDialog(
+    'Пропустить урок?',
+    `Потратить ${price} монет и засчитать урок как пройденный?`,
+    () => {
+      if (!spendCoins(price)) return;
+      const lang = data.langs.find(l => l.id === currentLangId);
+      const lesson = lang.lessons.find(l => l.id === lessonId);
+      if (lesson) {
+        lesson.completed = true;
+        save();
+        playSound('purchase');
+        toast('⏭ Урок пропущен!');
+        renderTrail();
+      }
+    }
+  );
 }
 function openLesson(lessonId) {
   const lang = data.langs.find(l => l.id === currentLangId);
@@ -517,14 +528,12 @@ function openLesson(lessonId) {
   currentFolderId = null;
   const title = document.getElementById('cards-title');
   if (title) title.textContent = `${lesson.themeEmoji || '📘'} ${lesson.themeName} · Урок ${lesson.lessonNum}`;
-  renderCards();
-  showScreen('screen-cards');
+  renderCards(); showScreen('screen-cards');
 }
 function updateTreasureButton() {
   const btn = document.getElementById('treasure-btn');
   if (!btn) return;
   const ready = isTreasureReady();
-  btn.textContent = ready ? '🎁' : '🎁';
   btn.style.opacity = ready ? '1' : '0.4';
   btn.style.animation = ready ? 'currentPulse 1.5s infinite' : 'none';
 }
@@ -574,12 +583,10 @@ function renderMineList() {
       <span class="delete-x" onclick="event.stopPropagation(); confirmDeleteFolder('${folder.id}')">✕</span>
     `;
     div.onclick = () => {
-      currentFolderId = folder.id;
-      currentLessonId = null;
+      currentFolderId = folder.id; currentLessonId = null;
       const title = document.getElementById('cards-title');
       if (title) title.textContent = folder.name;
-      renderCards();
-      showScreen('screen-cards');
+      renderCards(); showScreen('screen-cards');
     };
     el.appendChild(div);
   });
@@ -596,27 +603,23 @@ function saveFolder() {
   const lang = data.langs.find(l => l.id === currentLangId);
   if (!lang.folders) lang.folders = [];
   lang.folders.push({ id: uid(), name, cards: [] });
-  save();
-  closeModal('modal-folder');
+  save(); closeModal('modal-folder');
   const newFolder = lang.folders[lang.folders.length - 1];
-  currentFolderId = newFolder.id;
-  currentLessonId = null;
+  currentFolderId = newFolder.id; currentLessonId = null;
   const title = document.getElementById('cards-title');
   if (title) title.textContent = newFolder.name;
-  renderCards();
-  showScreen('screen-cards');
+  renderCards(); showScreen('screen-cards');
 }
 function confirmDeleteFolder(id) {
   confirmDialog('Удалить папку?', 'Все слова внутри удалятся.', () => {
     const lang = data.langs.find(l => l.id === currentLangId);
     lang.folders = lang.folders.filter(f => f.id !== id);
-    save();
-    renderMineList();
+    save(); renderMineList();
   });
 }
 
 /* ============================================================
-   КАРТОЧКИ (внутри урока/папки)
+   КАРТОЧКИ
    ============================================================ */
 function getCurrentContainer() {
   const lang = data.langs.find(l => l.id === currentLangId);
@@ -657,8 +660,7 @@ function deleteCard(idx) {
   const c = getCurrentContainer();
   if (!c) return;
   c.cards.splice(idx, 1);
-  save();
-  renderCards();
+  save(); renderCards();
 }
 
 /* ============================================================
@@ -692,8 +694,7 @@ function parseBulk(text) {
 }
 function makeCard(front, back) {
   return {
-    front, back,
-    seen: 0, correct: 0, wrong: 0,
+    front, back, seen: 0, correct: 0, wrong: 0,
     star: false, hard: false,
     lastSeen: null, srsNext: null, srsLevel: 0
   };
@@ -706,14 +707,9 @@ function addBulk() {
   const existing = new Set(c.cards.map(x => x.front.toLowerCase()));
   let added = 0;
   for (const card of newCards) {
-    if (!existing.has(card.front.toLowerCase())) {
-      c.cards.push(card);
-      added++;
-    }
+    if (!existing.has(card.front.toLowerCase())) { c.cards.push(card); added++; }
   }
-  save();
-  closeModal('modal-bulk');
-  renderCards();
+  save(); closeModal('modal-bulk'); renderCards();
   toast(`✅ Добавлено: ${added}`, 2000);
   addXP(2 * added);
 }
@@ -721,9 +717,7 @@ function replaceBulk() {
   confirmDialog('Заменить всё?', 'Все текущие слова удалятся.', () => {
     const c = getCurrentContainer();
     c.cards = parseBulk(document.getElementById('bulk-input').value);
-    save();
-    closeModal('modal-bulk');
-    renderCards();
+    save(); closeModal('modal-bulk'); renderCards();
     toast(`Заменено: ${c.cards.length}`);
   });
 }
@@ -736,9 +730,7 @@ function renderModePicker() {
   const el = document.getElementById('mode-picker');
   if (!el) return;
   const c = getCurrentContainer();
-  const totalWords = c ? c.cards.length : 0;
   const hardCount = c ? c.cards.filter(x => x.hard).length : 0;
-
   el.innerHTML = `
     <button class="mode-btn" onclick="startStudy('classic', false)">
       <div class="mode-icon">🎴</div>
@@ -776,21 +768,21 @@ function renderModePicker() {
     <button class="mode-btn" onclick="startSpeed('fast')">
       <div class="mode-icon">⚡</div>
       <div class="mode-name">Быстрый · 10 слов</div>
-      <div class="mode-desc">45 секунд — успей ответить</div>
+      <div class="mode-desc">30 секунд — успей ответить</div>
     </button>
     <button class="mode-btn ${xp < 500 ? 'locked' : ''}"
       onclick="${xp < 500 ? `toast('🔒 Нужно 500 XP (у тебя ${xp})')` : `startSpeed('normal')`}">
       ${xp < 500 ? '<span class="mode-lock">🔒 500 XP</span>' : ''}
       <div class="mode-icon">🚀</div>
       <div class="mode-name">Скоростной · 15 слов</div>
-      <div class="mode-desc">60 секунд — проверь себя</div>
+      <div class="mode-desc">30 секунд — проверь себя</div>
     </button>
     <button class="mode-btn ${xp < 1500 ? 'locked' : ''}"
       onclick="${xp < 1500 ? `toast('🔒 Нужно 1500 XP (у тебя ${xp})')` : `startSpeed('hard')`}">
       ${xp < 1500 ? '<span class="mode-lock">🔒 1500 XP</span>' : ''}
       <div class="mode-icon">🔥</div>
-      <div class="mode-name">Хардкор · 20 слов</div>
-      <div class="mode-desc">45 секунд — только для мастеров</div>
+      <div class="mode-name">Хардкор · 15 слов</div>
+      <div class="mode-desc">20 секунд — только для мастеров</div>
     </button>
     <button class="mode-btn ${xp < 1000 ? 'locked' : ''}"
       onclick="${xp < 1000 ? `toast('🔒 Нужно 1000 XP (у тебя ${xp})')` : `startMix()`}">
@@ -816,6 +808,7 @@ function resetSession() {
   sessionStreakCorrect = 0; sessionNewWords = 0; sessionHadError = false;
   sessionStartTime = Date.now();
   quizLocked = false; audioLocked = false; speedLocked = false;
+  mixLocked = false; actionLock = false;
   matchSelectedLeft = null; matchSelectedRight = null; matchOffset = 0;
 }
 function startStudy(mode, onlyUnlearned) {
@@ -830,9 +823,7 @@ function startStudy(mode, onlyUnlearned) {
   studyDeck = deck;
   studyIndex = 0;
   studyFlipped = false;
-
   const title = c.name || c.themeName || 'Урок';
-
   if (mode === 'classic' || mode === 'hard') {
     document.getElementById('study-title').textContent = title;
     showScreen('screen-study');
@@ -878,25 +869,20 @@ function renderStudyCard() {
     starBtn.style.color = card.star ? 'var(--star)' : '';
   }
   const hardBtn = document.getElementById('hard-btn');
-  if (hardBtn) {
-    hardBtn.style.color = card.hard ? 'var(--warn)' : '';
-  }
+  if (hardBtn) hardBtn.style.color = card.hard ? 'var(--warn)' : '';
   const revBtn = document.getElementById('reverse-btn');
   if (revBtn) revBtn.style.opacity = data.settings.reverseMode ? '1' : '0.5';
 }
 function toggleReverse() {
   data.settings.reverseMode = !data.settings.reverseMode;
-  save();
-  renderStudyCard();
+  save(); renderStudyCard();
   toast(data.settings.reverseMode ? '🔄 Обратный режим ВКЛ' : '🔄 Обратный режим ВЫКЛ');
 }
 function toggleStar() {
   const card = studyDeck[studyIndex];
   if (!card) return;
   card.star = !card.star;
-  save();
-  renderStudyCard();
-  playSound('flip');
+  save(); renderStudyCard(); playSound('flip');
   checkAchievements();
   if (card.star) trackQuestProgress('star', 1);
 }
@@ -904,14 +890,16 @@ function toggleHard() {
   const card = studyDeck[studyIndex];
   if (!card) return;
   card.hard = !card.hard;
-  save();
-  renderStudyCard();
-  playSound('flip');
+  save(); renderStudyCard(); playSound('flip');
   if (card.hard) toast(pickPenguin('hard'));
 }
+
+/* ---------- ГЛАВНАЯ ФУНКЦИЯ ОТВЕТА (с защитой от обуза) ---------- */
 function answer(correct) {
+  if (actionLock) return;  // ← ЗАЩИТА
+  actionLock = true;
   const card = studyDeck[studyIndex];
-  if (!card) return;
+  if (!card) { actionLock = false; return; }
   const wasNew = card.seen === 0;
   card.seen++;
   if (correct) {
@@ -922,13 +910,11 @@ function answer(correct) {
     addXP(gain);
     addCoins(COIN_REWARDS.correct);
     playSound('good');
-    vibrate(20);
     trackQuestProgress('correct', 1);
   } else {
     card.wrong++; sessionWrong++; sessionStreakCorrect = 0;
     sessionHadError = true;
     playSound('bad');
-    vibrate([30, 40, 30]);
   }
   card.lastSeen = Date.now();
   updateSRS(card, correct);
@@ -941,7 +927,10 @@ function answer(correct) {
     cardEl.classList.add('bad-anim');
     setTimeout(() => cardEl.classList.add('fly-left'), 300);
   }
-  setTimeout(nextCard, 700);
+  setTimeout(() => {
+    actionLock = false;
+    nextCard();
+  }, 700);
 }
 function nextCard() {
   studyIndex++;
@@ -1042,16 +1031,15 @@ function startQuizTimer(card) {
   }, 1000);
 }
 function quizTimeout(card) {
+  if (quizLocked) return;
   quizLocked = true;
   card.seen++; card.wrong++; sessionWrong++; sessionStreakCorrect = 0;
   sessionHadError = true;
-  updateSRS(card, false);
-  save();
+  updateSRS(card, false); save();
   document.querySelectorAll('#quiz-options .quiz-option').forEach(b => {
     if (b.textContent === card.back) b.classList.add('correct');
   });
   playSound('bad');
-  vibrate([30, 40, 30]);
   setTimeout(() => {
     studyIndex++;
     if (studyIndex >= studyDeck.length) { finishSession(); return; }
@@ -1076,7 +1064,6 @@ function quizAnswer(btn, chosen, card) {
     addCoins(COIN_REWARDS.correct);
     btn.classList.add('correct');
     playSound('good');
-    vibrate(20);
     trackQuestProgress('correct', 1);
   } else {
     card.wrong++; sessionWrong++; sessionStreakCorrect = 0;
@@ -1086,7 +1073,6 @@ function quizAnswer(btn, chosen, card) {
       if (b.textContent === card.back) b.classList.add('correct');
     });
     playSound('bad');
-    vibrate([30, 40, 30]);
   }
   card.lastSeen = Date.now();
   updateSRS(card, isCorrect);
@@ -1108,7 +1094,7 @@ function updateSRS(card, correct) {
   card.srsNext = Date.now() + days * 86400000;
 }
 
-/* ---------- СТРИК И ЕЖЕДНЕВКА ---------- */
+/* ---------- СТРИК ---------- */
 function markStudyDay() {
   const today = new Date().toDateString();
   const last = data.settings.lastStudyDate;
@@ -1117,7 +1103,6 @@ function markStudyDay() {
   if (last === yesterday) {
     data.settings.streak = (data.settings.streak || 0) + 1;
   } else if (last && last !== yesterday && last !== today) {
-    // Пропустил день — тратим заморозку
     if (data.settings.streakFreezes > 0) {
       data.settings.streakFreezes--;
       toast(pickPenguin('freezeUsed'), 2500);
@@ -1152,25 +1137,21 @@ function incrementDailyCount(n) {
   }
 }
 
-/* ---------- ФИНАЛ + КОНФЕТТИ ---------- */
+/* ---------- ФИНАЛ ---------- */
 function finishSession() {
   clearInterval(quizTimer);
   clearInterval(speedTimer);
-
   lastLesson = {
-    mode: studyMode,
-    langId: currentLangId,
-    folderId: currentFolderId,
-    lessonId: currentLessonId
+    mode: studyMode, langId: currentLangId,
+    folderId: currentFolderId, lessonId: currentLessonId
   };
-
-  // Отмечаем урок тропы как пройденный
   if (currentLessonId) {
     const lang = data.langs.find(l => l.id === currentLangId);
     const lesson = lang && lang.lessons.find(l => l.id === currentLessonId);
     if (lesson) {
       const allLearned = lesson.cards.every(c => c.correct > 0 && c.correct >= c.wrong);
-      if (allLearned || sessionCorrect / (sessionCorrect + sessionWrong) >= 0.7) {
+      const totalAns = sessionCorrect + sessionWrong;
+      if (allLearned || (totalAns > 0 && sessionCorrect / totalAns >= 0.7)) {
         if (!lesson.completed) {
           lesson.completed = true;
           toast('🌟 Урок пройден!', 2000);
@@ -1178,55 +1159,43 @@ function finishSession() {
       }
     }
   }
-
   const total = sessionCorrect + sessionWrong;
   const pct = total ? Math.round(sessionCorrect / total * 100) : 0;
-
-  // Бонусы за завершение
   addXP(XP_REWARDS.lessonFinish);
   addCoins(COIN_REWARDS.lessonFinish);
   if (pct === 100 && !sessionHadError) {
     addCoins(COIN_REWARDS.perfectLesson);
     data.settings.perfectLessons = (data.settings.perfectLessons || 0) + 1;
   }
-
-  // Заполняем финальный экран
   document.getElementById('finish-correct').textContent = sessionCorrect;
   document.getElementById('finish-wrong').textContent = sessionWrong;
   document.getElementById('finish-pct').textContent = pct + '%';
-  document.getElementById('finish-xp').textContent = '+' + sessionXP;
+  const wasDouble = data.settings.doubleXpActive &&
+                    data.settings.doubleXpUntil &&
+                    Date.now() < data.settings.doubleXpUntil;
+  document.getElementById('finish-xp').textContent = wasDouble ? `+${sessionXP} (×2)` : `+${sessionXP}`;
   document.getElementById('finish-coins').textContent = '+' + sessionCoins;
   document.getElementById('finish-emoji').textContent = finishEmoji(pct, !sessionHadError);
   document.getElementById('finish-title').textContent = 'Урок завершён!';
   document.getElementById('finish-phrase').textContent = penguinForFinish(pct, !sessionHadError);
-
   showScreen('screen-finish');
   playSound('finish');
-  vibrate([50, 50, 100]);
-
-  // Конфетти
   const container = document.getElementById('confetti-container');
   if (container) {
     container.innerHTML = '';
     launchConfetti(container, 60);
   }
-
   markStudyDay();
   incrementDailyCount(sessionCorrect);
-
-  // Квесты
   trackQuestProgress('lessons', 1);
   trackQuestProgress('newWords', sessionNewWords);
   trackQuestProgress('minutes', Math.round((Date.now() - sessionStartTime) / 60000));
   if (studyMode === 'quiz') trackQuestProgress('quizzes', 1);
   if (pct >= 80) trackQuestProgress('perfect', 1);
   if (!sessionHadError && sessionCorrect > 0) trackQuestProgress('noError', 1);
-
-  // Ачивки режимов
   if (studyMode === 'speed' && speedScore >= 20) unlockAchievement('speedster');
   if (studyMode === 'speed' && speedType === 'hard' && speedScore >= 15) unlockAchievement('lightning');
   if (studyMode === 'mix') unlockAchievement('mixer');
-
   checkAchievements();
   save();
 }
@@ -1251,20 +1220,18 @@ async function shareResult() {
     `✓ ${sessionCorrect} правильных · ✗ ${sessionWrong} ошибок · ${pct}%\n` +
     `💎 +${sessionXP} XP · 💰 +${sessionCoins} монет\n` +
     `🔥 Streak: ${data.settings.streak} дней\n\n` +
-    `Учу языки с пингвином! 🐧❄️`;
+    `Учу языки с пингвином! Попробуй и ты:\n` +
+    `https://cards-tau-plum.vercel.app/`;
   if (navigator.share) {
     try { await navigator.share({ title: 'Cards', text }); } catch (e) {}
   } else {
     try {
       await navigator.clipboard.writeText(text);
       toast('📋 Скопировано в буфер');
-    } catch (e) {
-      toast('Поделиться не получилось');
-    }
+    } catch (e) { toast('Поделиться не получилось'); }
   }
 }
 
-/* ---------- УТИЛИТА uid ---------- */
 function uid() {
   return Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 }
@@ -1301,18 +1268,13 @@ function trackQuestProgress(type, amount) {
       addCoins(COIN_REWARDS.questComplete);
       addXP(15);
       playSound('achievement');
-      vibrate([20, 30, 20]);
       toast(pickPenguin('questDone'), 2500);
-      // Проверка, все ли квесты выполнены
       if (data.settings.questsCompleted.length >= currentQuests.length) {
         setTimeout(() => toast(pickPenguin('allQuestsDone'), 3000), 1200);
       }
     }
   });
-  if (changed) {
-    save();
-    updateQuestBadge();
-  }
+  if (changed) { save(); updateQuestBadge(); }
 }
 
 /* ============================================================
@@ -1320,25 +1282,19 @@ function trackQuestProgress(type, amount) {
    ============================================================ */
 function openTreasure() {
   const chest = document.getElementById('treasure-chest');
-  if (chest) {
-    chest.classList.add('opened');
-  }
+  if (chest) chest.classList.add('opened');
   playSound('treasure');
-  vibrate([50, 50, 100, 50]);
   setTimeout(() => {
     const reward = pickTreasureReward();
     applyReward(reward);
     closeModal('modal-treasure');
     showRewardModal(reward);
-    if (chest) {
-      chest.classList.remove('opened');
-    }
+    if (chest) chest.classList.remove('opened');
   }, 900);
 }
 function applyReward(reward) {
   data.settings.treasureDate = todayLocalStr();
   data.settings.treasureOpened = true;
-
   if (reward.type === 'coins') {
     const amount = reward.amount[0] + Math.floor(Math.random() * (reward.amount[1] - reward.amount[0] + 1));
     addCoins(amount);
@@ -1357,7 +1313,6 @@ function applyReward(reward) {
       data.settings.ownedAvatars.push(av.id);
       reward._avatar = av;
     } else {
-      // Всё есть — дадим монет
       addCoins(100);
       reward.text = 'Все аватарки есть! +100 монет';
     }
@@ -1397,18 +1352,9 @@ function openSettings() {
   if (themeSelect) themeSelect.value = data.settings.theme || 'system';
   showScreen('screen-settings');
 }
-function toggleSound() {
-  data.settings.sound = document.getElementById('sound-toggle').checked;
-  save();
-}
-function toggleVibe() {
-  data.settings.vibe = document.getElementById('vibe-toggle').checked;
-  save();
-}
-function toggleTick() {
-  data.settings.tick = document.getElementById('tick-toggle').checked;
-  save();
-}
+function toggleSound() { data.settings.sound = document.getElementById('sound-toggle').checked; save(); }
+function toggleVibe() { data.settings.vibe = document.getElementById('vibe-toggle').checked; save(); }
+function toggleTick() { data.settings.tick = document.getElementById('tick-toggle').checked; save(); }
 function toggleSRS() {
   data.settings.srs = document.getElementById('srs-toggle').checked;
   save();
@@ -1422,11 +1368,8 @@ function changeTheme() {
   const theme = document.getElementById('theme-select').value;
   data.settings.theme = theme;
   save();
-  if (theme === 'system') {
-    document.documentElement.removeAttribute('data-theme');
-  } else {
-    document.documentElement.setAttribute('data-theme', theme);
-  }
+  if (theme === 'system') document.documentElement.removeAttribute('data-theme');
+  else document.documentElement.setAttribute('data-theme', theme);
   toast('🎨 Тема изменена');
 }
 function changeDailyGoal() {
@@ -1437,8 +1380,7 @@ function saveDailyGoal() {
   const v = parseInt(document.getElementById('goal-input').value);
   if (!v || v < 5 || v > 200) { toast('Введи 5–200'); return; }
   data.settings.dailyGoal = v;
-  save();
-  closeModal('modal-goal');
+  save(); closeModal('modal-goal');
   document.getElementById('daily-goal-val').textContent = v + ' слов';
   toast(`🎯 Цель: ${v} слов в день`);
 }
@@ -1466,9 +1408,17 @@ function exportData() {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `cards-backup-${todayLocalStr()}.json`;
+  a.download = `cards-manual-${todayLocalStr()}.json`;
   a.click();
   URL.revokeObjectURL(url);
+  if (!data.settings.manualExports) data.settings.manualExports = [];
+  data.settings.manualExports.push({
+    date: todayLocalStr(),
+    time: Date.now(),
+    size: new Blob([JSON.stringify(data)]).size
+  });
+  if (data.settings.manualExports.length > 10) data.settings.manualExports.shift();
+  save();
   toast('💾 Файл сохранён');
 }
 function importData(e) {
@@ -1542,9 +1492,6 @@ function resetAll() {
     });
 }
 
-/* ============================================================
-   ПРИМЕНЕНИЕ НАСТРОЕК
-   ============================================================ */
 function applySettings() {
   if (data.settings.theme && data.settings.theme !== 'system') {
     document.documentElement.setAttribute('data-theme', data.settings.theme);
@@ -1554,7 +1501,7 @@ function applySettings() {
 }
 
 /* ============================================================
-   БЭКАПЫ (автосохранение)
+   БЭКАПЫ
    ============================================================ */
 function makeBackup() {
   try {
@@ -1568,7 +1515,6 @@ function makeBackup() {
     data.settings.lastBackupDate = today;
     if (!data.settings.backups) data.settings.backups = {};
     data.settings.backups[today] = { size, time: Date.now() };
-    // Ограничиваем 7 бэкапами
     const dates = Object.keys(data.settings.backups).sort();
     while (dates.length > MAX_BACKUPS) {
       const old = dates.shift();
@@ -1583,22 +1529,39 @@ function openBackups() {
   if (!el) return;
   const backups = data.settings.backups || {};
   const dates = Object.keys(backups).sort().reverse();
-  if (!dates.length) {
-    el.innerHTML = `<div class="empty">📦 Пока нет бэкапов.<br>Первый создастся при следующем занятии.</div>`;
-    return;
+  let html = '';
+  if (dates.length) {
+    html += '<div class="section-title">📦 Автоматические (7 дней)</div>';
+    html += dates.map(date => {
+      const b = backups[date];
+      const size = b.size ? (b.size / 1024).toFixed(1) + ' КБ' : '';
+      return `<div class="backup-item" onclick="restoreBackup('${date}')">
+        <div class="bi-icon">📦</div>
+        <div class="bi-info">
+          <div class="bi-date">${formatDate(date)}</div>
+          <div class="bi-size">${size} · ${new Date(b.time).toLocaleTimeString('ru-RU', {hour:'2-digit', minute:'2-digit'})}</div>
+        </div>
+        <div class="val">›</div>
+      </div>`;
+    }).join('');
   }
-  el.innerHTML = dates.map(date => {
-    const b = backups[date];
-    const size = b.size ? (b.size / 1024).toFixed(1) + ' КБ' : '';
-    return `<div class="backup-item" onclick="restoreBackup('${date}')">
-      <div class="bi-icon">📦</div>
-      <div class="bi-info">
-        <div class="bi-date">${formatDate(date)}</div>
-        <div class="bi-size">${size} · ${new Date(b.time).toLocaleTimeString('ru-RU', {hour:'2-digit', minute:'2-digit'})}</div>
-      </div>
-      <div class="val">›</div>
-    </div>`;
-  }).join('');
+  const manual = (data.settings.manualExports || []).slice().reverse();
+  if (manual.length) {
+    html += '<div class="section-title">💾 Ручные экспорты</div>';
+    html += manual.map(m => {
+      const size = m.size ? (m.size / 1024).toFixed(1) + ' КБ' : '';
+      return `<div class="backup-item">
+        <div class="bi-icon">💾</div>
+        <div class="bi-info">
+          <div class="bi-date">${formatDate(m.date)}</div>
+          <div class="bi-size">${size} · ${new Date(m.time).toLocaleTimeString('ru-RU', {hour:'2-digit', minute:'2-digit'})}</div>
+        </div>
+        <div class="val" style="color:var(--sub);font-size:12px;">файл на устройстве</div>
+      </div>`;
+    }).join('');
+  }
+  if (!html) html = '<div class="empty">📦 Пока нет бэкапов.<br>Первый создастся автоматически.</div>';
+  el.innerHTML = html;
   showScreen('screen-backups');
 }
 function restoreBackup(date) {
@@ -1614,23 +1577,14 @@ function restoreBackup(date) {
       renderLangs();
       toast('📦 Восстановлено!');
       goProfile();
-    } catch (e) {
-      toast('Ошибка восстановления');
-    }
+    } catch (e) { toast('Ошибка восстановления'); }
   });
 }
 
-/* ---------- АВТОСОХРАНЕНИЕ ПРИ ВЫХОДЕ ---------- */
 document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'hidden') {
-    save();
-    makeBackup();
-  }
+  if (document.visibilityState === 'hidden') { save(); makeBackup(); }
 });
-window.addEventListener('beforeunload', () => {
-  save();
-  makeBackup();
-});
+window.addEventListener('beforeunload', () => { save(); makeBackup(); });
 
 /* ============================================================
    ИНИЦИАЛИЗАЦИЯ
@@ -1642,41 +1596,25 @@ function init() {
   updateQuestBadge();
   initCardSwipe();
   ensureQuestsForToday();
-
-  // Создать бэкап за сегодня
   makeBackup();
-
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('sw.js').catch(() => {});
   }
-
-  // Прелоадер
-  window.addEventListener('load', () => {
-    setTimeout(() => {
-      const pre = document.getElementById('preloader');
-      if (pre) {
-        pre.classList.add('hide');
-        setTimeout(() => pre.remove(), 600);
-      }
-      showOnboardingIfNeeded();
-    }, 1200);
-  });
-  // На случай, если load уже прошёл
-  if (document.readyState === 'complete') {
-    setTimeout(() => {
-      const pre = document.getElementById('preloader');
-      if (pre) {
-        pre.classList.add('hide');
-        setTimeout(() => pre.remove(), 600);
-      }
-      showOnboardingIfNeeded();
-    }, 1200);
-  }
+  const hidePreloader = () => {
+    const pre = document.getElementById('preloader');
+    if (pre) {
+      pre.classList.add('hide');
+      setTimeout(() => pre.remove(), 600);
+    }
+    showOnboardingIfNeeded();
+  };
+  if (document.readyState === 'complete') setTimeout(hidePreloader, 1200);
+  else window.addEventListener('load', () => setTimeout(hidePreloader, 1200));
 }
 init();
 
 /* ============================================================
-   ЗАГЛУШКИ (будут в Части 2)
+   ЗАГЛУШКИ (переопределяются в Части 2)
    ============================================================ */
 function renderMatchBatch() {}
 function renderAudioCard() {}
@@ -1689,13 +1627,13 @@ function renderProfile() {}
 function openShop() {}
 function openQuests() {}
 /* ============================================================
-   Cards App v7.0 — Часть 2 (финальная)
+   Cards App v7.1 — Часть 2 (финальная)
    Сопоставление, аудио, скоростной ×3, микс, профиль, магазин,
-   аватарки, квесты, статистика, достижения, календарь
+   аватарки, квесты, статистика, календарь, достижения
    ============================================================ */
 
 /* ============================================================
-   РЕЖИМ: СОПОСТАВЛЕНИЕ
+   СОПОСТАВЛЕНИЕ
    ============================================================ */
 function renderMatchBatch() {
   matchSelectedLeft = null;
@@ -1759,13 +1697,11 @@ function selectMatch(side, tile) {
         addXP(gain);
         addCoins(COIN_REWARDS.correct);
         playSound('good');
-        vibrate(20);
         trackQuestProgress('correct', 1);
       } else {
         card.wrong++; sessionWrong++; sessionStreakCorrect = 0;
         sessionHadError = true;
         playSound('bad');
-        vibrate([30, 40, 30]);
       }
       card.lastSeen = Date.now();
       updateSRS(card, correct);
@@ -1794,7 +1730,7 @@ function selectMatch(side, tile) {
 }
 
 /* ============================================================
-   РЕЖИМ: АУДИО
+   АУДИО
    ============================================================ */
 function renderAudioCard() {
   const card = audioDeck[audioIndex];
@@ -1844,7 +1780,6 @@ function audioAnswer(btn, chosen, card) {
     addCoins(COIN_REWARDS.correct);
     btn.classList.add('correct');
     playSound('good');
-    vibrate(20);
     trackQuestProgress('correct', 1);
   } else {
     card.wrong++; sessionWrong++; sessionStreakCorrect = 0;
@@ -1854,7 +1789,6 @@ function audioAnswer(btn, chosen, card) {
       if (b.textContent === card.back) b.classList.add('correct');
     });
     playSound('bad');
-    vibrate([30, 40, 30]);
   }
   card.lastSeen = Date.now();
   updateSRS(card, isCorrect);
@@ -1867,12 +1801,12 @@ function audioAnswer(btn, chosen, card) {
 }
 
 /* ============================================================
-   РЕЖИМ: СКОРОСТНОЙ × 3
+   СКОРОСТНОЙ ×3 (новые тайминги)
    ============================================================ */
 const SPEED_CONFIG = {
-  fast:   { words: 10, time: 45, title: '⚡ Быстрый' },
-  normal: { words: 15, time: 60, title: '🚀 Скоростной' },
-  hard:   { words: 20, time: 45, title: '🔥 Хардкор' }
+  fast:   { words: 10, time: 30, title: '⚡ Быстрый' },
+  normal: { words: 15, time: 30, title: '🚀 Скоростной' },
+  hard:   { words: 15, time: 20, title: '🔥 Хардкор' }
 };
 function startSpeed(type) {
   const cfg = SPEED_CONFIG[type] || SPEED_CONFIG.fast;
@@ -1893,7 +1827,6 @@ function startSpeed(type) {
   speedTimeLeft = cfg.time;
   speedScore = 0;
   speedLocked = false;
-  // Берём случайные N слов (или все, если меньше)
   const picked = shuffle([...pool]).slice(0, Math.min(cfg.words, pool.length));
   speedDeck = picked;
   speedTotal = picked.length;
@@ -1911,12 +1844,9 @@ function startSpeedTimer() {
   speedTimer = setInterval(() => {
     speedTimeLeft--;
     updateSpeedTimerDisplay();
-    // Тик в последние 10 секунд
     if (speedTimeLeft <= 10 && speedTimeLeft > 0 && data.settings.tick) {
       playSound(speedTimeLeft <= 5 ? 'tickUrgent' : 'tick');
     }
-    // Вибрация в последние 5 сек
-    if (speedTimeLeft <= 5 && speedTimeLeft > 0) vibrate(10);
     if (speedTimeLeft <= 0) {
       clearInterval(speedTimer);
       playSound('timeUp');
@@ -1933,7 +1863,6 @@ function updateSpeedTimerDisplay() {
 }
 function renderSpeedCard() {
   if (speedIndex >= speedDeck.length) {
-    // Прошли все слова — начинаем заново перемешанными
     speedDeck = shuffle(speedDeck);
     speedIndex = 0;
   }
@@ -1971,7 +1900,6 @@ function speedAnswer(btn, chosen, card) {
     addCoins(COIN_REWARDS.correct);
     btn.classList.add('correct');
     playSound('good');
-    vibrate(15);
     trackQuestProgress('correct', 1);
   } else {
     card.wrong++;
@@ -1983,7 +1911,6 @@ function speedAnswer(btn, chosen, card) {
       if (b.textContent === card.back) b.classList.add('correct');
     });
     playSound('bad');
-    vibrate([30, 40, 30]);
   }
   card.lastSeen = Date.now();
   updateSRS(card, isCorrect);
@@ -1995,7 +1922,7 @@ function speedAnswer(btn, chosen, card) {
 }
 
 /* ============================================================
-   РЕЖИМ: МИКС
+   МИКС (с защитой от обуза)
    ============================================================ */
 function startMix() {
   const lang = data.langs.find(l => l.id === currentLangId);
@@ -2010,6 +1937,7 @@ function startMix() {
   if (all.length < 3) { toast('Нужно минимум 3 слова во всём языке'); return; }
   resetSession();
   studyMode = 'mix';
+  mixLocked = false;
   mixDeck = shuffle(all).slice(0, 20);
   mixIndex = 0;
   mixFlipped = false;
@@ -2031,6 +1959,7 @@ function renderMixCard() {
   document.getElementById('mix-count').textContent = `${mixIndex + 1} / ${mixDeck.length}`;
   document.getElementById('mix-source').textContent = card._folder;
 }
+/* Клик на карточку микса */
 document.addEventListener('DOMContentLoaded', () => {
   const mc = document.getElementById('mix-card');
   if (mc) {
@@ -2041,6 +1970,19 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 });
+/* На случай, если DOM уже готов */
+setTimeout(() => {
+  const mc = document.getElementById('mix-card');
+  if (mc && !mc._mixBound) {
+    mc._mixBound = true;
+    mc.addEventListener('click', () => {
+      mixFlipped = !mixFlipped;
+      playSound('flip');
+      renderMixCard();
+    });
+  }
+}, 500);
+
 function speakMix(e) {
   if (e) e.stopPropagation();
   const card = mixDeck[mixIndex];
@@ -2049,8 +1991,10 @@ function speakMix(e) {
   speak(card.front, lang ? lang.locale : 'en-US');
 }
 function mixAnswer(correct) {
+  if (mixLocked) return;  // ← ЗАЩИТА
+  mixLocked = true;
   const card = mixDeck[mixIndex];
-  if (!card) return;
+  if (!card) { mixLocked = false; return; }
   const realCard = findCardInLang(card.front, card._folderId, card._lessonId);
   if (realCard) {
     const wasNew = realCard.seen === 0;
@@ -2063,13 +2007,11 @@ function mixAnswer(correct) {
       addXP(gain);
       addCoins(COIN_REWARDS.correct);
       playSound('good');
-      vibrate(20);
       trackQuestProgress('correct', 1);
     } else {
       realCard.wrong++; sessionWrong++; sessionStreakCorrect = 0;
       sessionHadError = true;
       playSound('bad');
-      vibrate([30, 40, 30]);
     }
     realCard.lastSeen = Date.now();
     updateSRS(realCard, correct);
@@ -2079,6 +2021,7 @@ function mixAnswer(correct) {
   if (correct) cardEl.classList.add('good-anim');
   else cardEl.classList.add('bad-anim');
   setTimeout(() => {
+    mixLocked = false;
     cardEl.classList.remove('good-anim', 'bad-anim');
     mixIndex++;
     mixFlipped = false;
@@ -2115,31 +2058,41 @@ function renderProfile() {
   const dailyPct = Math.min(dailyCount / dailyGoal, 1);
   const circumference = 2 * Math.PI * 38;
   const offset = circumference * (1 - dailyPct);
-
-  const avatar = getAvatarById(data.settings.currentAvatar);
   const nickname = data.settings.nickname || 'Пользователь';
 
-  const doubleXpActive = data.settings.doubleXpActive && data.settings.doubleXpUntil && Date.now() < data.settings.doubleXpUntil;
-  let doubleXpText = '';
+  // Аватарка
+  let avatarHtml = '🐧';
+  if (data.settings.currentAvatar === 'custom' && data.settings.customPhoto) {
+    avatarHtml = `<img src="${data.settings.customPhoto}" style="width:80px;height:80px;border-radius:50%;object-fit:cover;border:3px solid #fff;box-shadow:0 4px 12px rgba(0,0,0,0.2);">`;
+  } else {
+    const av = getAvatarById(data.settings.currentAvatar);
+    avatarHtml = av.emoji;
+  }
+
+  const doubleXpActive = data.settings.doubleXpActive &&
+                         data.settings.doubleXpUntil &&
+                         Date.now() < data.settings.doubleXpUntil;
+  let doubleXpHtml = '';
   if (doubleXpActive) {
     const mins = Math.ceil((data.settings.doubleXpUntil - Date.now()) / 60000);
-    doubleXpText = `<div class="list-item" style="background:linear-gradient(135deg,var(--gold),var(--warn));color:#fff;">
-      <div class="info"><div class="title">⚡ Двойной XP активен</div>
-      <div class="sub" style="color:rgba(255,255,255,0.9)">Осталось ${mins} минут</div></div></div>`;
+    doubleXpHtml = `<div class="list-item" style="background:linear-gradient(135deg,var(--gold),var(--warn));color:#fff;">
+      <div class="info">
+        <div class="title" style="color:#fff;">⚡ Двойной XP активен</div>
+        <div class="sub" style="color:rgba(255,255,255,0.9)">Осталось ${mins} минут · все очки ×2</div>
+      </div>
+    </div>`;
   }
 
   const el = document.getElementById('profile-content');
   el.innerHTML = `
     <div class="profile-header">
-      <div class="profile-avatar" onclick="openAvatars()" title="Сменить аватарку">${avatar.emoji}</div>
+      <div class="profile-avatar" onclick="openAvatars()" title="Сменить аватарку">${avatarHtml}</div>
       <div class="profile-nickname" onclick="changeNickname()">${esc(nickname)} ✏️</div>
       <div class="profile-level">${lvl.current.name}</div>
       <div class="xp-bar"><div style="width:${Math.round(lvl.progress * 100)}%"></div></div>
-      <div class="xp-text">${lvl.next.min === Infinity ? '🏆 Максимум!' : `${xp} / ${lvl.next.min} XP до след. уровня`}</div>
+      <div class="xp-text">${lvl.next.min === Infinity ? '🏆 Максимум!' : `${formatNumber(xp)} / ${formatNumber(lvl.next.min)} XP до след. уровня`}</div>
     </div>
-
-    ${doubleXpText}
-
+    ${doubleXpHtml}
     <div class="daily-ring">
       <svg viewBox="0 0 90 90">
         <circle class="ring-bg" cx="45" cy="45" r="38"></circle>
@@ -2150,17 +2103,15 @@ function renderProfile() {
       <div class="daily-info">
         <div class="big">${dailyCount} / ${dailyGoal}</div>
         <div class="small">🎯 Ежедневная цель</div>
-        <div class="small">🔥 Streak: ${data.settings.streak || 0} дн. ${data.settings.streakFreezes > 0 ? `· 🧊 ${data.settings.streakFreezes}` : ''}</div>
+        <div class="small">🔥 Streak: ${data.settings.streak || 0} дн.${data.settings.streakFreezes > 0 ? ` · 🧊 ${data.settings.streakFreezes}` : ''}</div>
       </div>
     </div>
-
     <div class="stats-grid">
       <div class="stat-card"><div class="num">${formatNumber(s.total)}</div><div class="lbl">Всего слов</div></div>
       <div class="stat-card"><div class="num">${formatNumber(s.learned)}</div><div class="lbl">Выучено</div></div>
       <div class="stat-card"><div class="num">${s.lessonsDone}</div><div class="lbl">Уроков тропы</div></div>
       <div class="stat-card"><div class="num">${unlocked}/${totalAch}</div><div class="lbl">Достижений</div></div>
     </div>
-
     <div class="section-title">Разделы</div>
     <div class="list-item" onclick="openQuests()">
       <div class="info"><div class="title">🎯 Ежедневные квесты</div>
@@ -2201,7 +2152,6 @@ function renderProfile() {
   updateHeaderStats();
 }
 
-/* ---------- СМЕНА ИМЕНИ ---------- */
 function changeNickname() {
   const cur = data.settings.nickname || 'Пользователь';
   const name = prompt('Твоё имя:', cur);
@@ -2214,22 +2164,23 @@ function changeNickname() {
 }
 
 /* ============================================================
-   МАГАЗИН
+   МАГАЗИН (без пропуска урока — теперь в тропе)
    ============================================================ */
 function openShop() {
   const el = document.getElementById('shop-content');
   if (!el) return;
   const coins = data.settings.totalCoins || 0;
-  const doubleActive = data.settings.doubleXpActive && data.settings.doubleXpUntil && Date.now() < data.settings.doubleXpUntil;
+  const doubleActive = data.settings.doubleXpActive &&
+                       data.settings.doubleXpUntil &&
+                       Date.now() < data.settings.doubleXpUntil;
   const mixBought = data.settings.mixDayBoughtDate === todayLocalStr();
-
   el.innerHTML = `
     <div class="section-title">Бусты и бонусы</div>
     <div class="shop-grid">
       <div class="shop-item ${coins < SHOP_PRICES.freeze ? 'bought' : ''}" onclick="buyItem('freeze')">
         <div class="shop-icon">🧊</div>
         <div class="shop-name">Заморозка streak</div>
-        <div class="shop-desc">Если пропустишь день — серия не сгорит</div>
+        <div class="shop-desc">Пропустишь день — серия не сгорит</div>
         <div class="shop-price">💰 ${SHOP_PRICES.freeze}</div>
       </div>
       <div class="shop-item ${doubleActive ? 'bought' : ''}" onclick="buyItem('doublexp')">
@@ -2251,26 +2202,24 @@ function openShop() {
         <div class="shop-price">💰 ${SHOP_PRICES.customPhoto}</div>
       </div>
     </div>
-
     <div class="section-title">Прогресс</div>
     <div class="shop-grid">
-      <div class="shop-item ${coins < SHOP_PRICES.skipLesson ? 'bought' : ''}" onclick="buyItem('skipLesson')">
-        <div class="shop-icon">⏭</div>
-        <div class="shop-name">Пропуск урока</div>
-        <div class="shop-desc">Зачесть текущий урок тропы пройденным</div>
-        <div class="shop-price">💰 ${SHOP_PRICES.skipLesson}</div>
-      </div>
       <div class="shop-item" onclick="openAvatars()">
         <div class="shop-icon">🎨</div>
         <div class="shop-name">Аватарки</div>
         <div class="shop-desc">Открывай редкие аватарки</div>
         <div class="shop-price">Смотреть ›</div>
       </div>
+      <div class="shop-item" onclick="goLangs()">
+        <div class="shop-icon">🎯</div>
+        <div class="shop-name">Пропуск урока</div>
+        <div class="shop-desc">Купить в тропе — тыкни по 🔒 уроку</div>
+        <div class="shop-price">💰 ${SHOP_PRICES.skipLesson}</div>
+      </div>
     </div>
-
     <div class="help-text" style="text-align:center;padding:20px;">
       💰 У тебя: <b>${coins}</b> монет<br>
-      Зарабатывай монеты за уроки, квесты и достижения!
+      Зарабатывай за уроки, квесты и достижения!
     </div>
   `;
   updateHeaderStats();
@@ -2284,7 +2233,9 @@ function buyItem(type) {
     playSound('purchase');
     toast('🧊 Заморозка куплена!');
   } else if (type === 'doublexp') {
-    const active = data.settings.doubleXpActive && data.settings.doubleXpUntil && Date.now() < data.settings.doubleXpUntil;
+    const active = data.settings.doubleXpActive &&
+                   data.settings.doubleXpUntil &&
+                   Date.now() < data.settings.doubleXpUntil;
     if (active) { toast('⚡ Уже активен'); return; }
     if (!spendCoins(SHOP_PRICES.doublexp)) return;
     data.settings.doubleXpActive = true;
@@ -2298,27 +2249,16 @@ function buyItem(type) {
     data.settings.mixDayBoughtDate = todayLocalStr();
     save();
     playSound('purchase');
-    openMixDay();
+    setTimeout(() => openMixDay(), 300);
+    return;
   } else if (type === 'customPhoto') {
-    if (data.settings.customPhotoPaid) {
-      openCustomPhoto();
-      return;
-    }
+    if (data.settings.customPhotoPaid) { openCustomPhoto(); return; }
     if (!spendCoins(SHOP_PRICES.customPhoto)) return;
     data.settings.customPhotoPaid = true;
     save();
     playSound('purchase');
-    openCustomPhoto();
-  } else if (type === 'skipLesson') {
-    const lang = data.langs.find(l => l.id === currentLangId);
-    if (!lang) { toast('Сначала открой язык'); return; }
-    const currentIdx = lang.lessons.findIndex(l => !l.completed);
-    if (currentIdx < 0) { toast('Все уроки пройдены!'); return; }
-    if (!spendCoins(SHOP_PRICES.skipLesson)) return;
-    lang.lessons[currentIdx].completed = true;
-    save();
-    playSound('purchase');
-    toast('⏭ Урок засчитан!');
+    setTimeout(() => openCustomPhoto(), 300);
+    return;
   }
   openShop();
 }
@@ -2335,7 +2275,8 @@ function openMixDay() {
   if (all.length < 3) { toast('Нужно минимум 3 слова'); return; }
   resetSession();
   studyMode = 'mix';
-  currentLangId = data.langs[0].id;
+  mixLocked = false;
+  if (!currentLangId && data.langs.length) currentLangId = data.langs[0].id;
   mixDeck = shuffle(all).slice(0, 10);
   mixIndex = 0;
   mixFlipped = false;
@@ -2344,8 +2285,6 @@ function openMixDay() {
   playSound('flip');
   renderMixCard();
 }
-
-/* ---------- ЗАГРУЗКА СВОЕГО ФОТО ---------- */
 function openCustomPhoto() {
   const input = document.createElement('input');
   input.type = 'file';
@@ -2371,7 +2310,11 @@ function openCustomPhoto() {
         data.settings.currentAvatar = 'custom';
         save();
         toast('📷 Фото установлено!');
-        renderProfile();
+        if (document.getElementById('screen-profile').classList.contains('active')) {
+          renderProfile();
+        } else if (document.getElementById('screen-avatars').classList.contains('active')) {
+          openAvatars();
+        }
       };
       img.src = ev.target.result;
     };
@@ -2388,9 +2331,7 @@ function openAvatars() {
   if (!el) return;
   const owned = data.settings.ownedAvatars || ['penguin'];
   const current = data.settings.currentAvatar || 'penguin';
-
   let html = '';
-  // Кнопка "своё фото"
   const hasCustom = !!data.settings.customPhoto;
   const customPaid = !!data.settings.customPhotoPaid;
   html += `<div class="photo-upload-item" onclick="${hasCustom ? `setCustomAvatar()` : `buyItem('customPhoto')`}">
@@ -2398,11 +2339,8 @@ function openAvatars() {
     <div class="pu-name">${hasCustom ? 'Своё фото' : 'Загрузить своё фото'}</div>
     <div class="pu-desc">${hasCustom ? (current === 'custom' ? '✓ Установлено' : 'Нажми чтобы использовать') : `Купить за ${SHOP_PRICES.customPhoto} монет`}</div>
   </div>`;
-
-  // Группируем по редкости
   const byRarity = { common: [], uncommon: [], rare: [], epic: [], legendary: [] };
   AVATARS.forEach(a => byRarity[a.rarity].push(a));
-
   const rarityOrder = ['common', 'uncommon', 'rare', 'epic', 'legendary'];
   rarityOrder.forEach(rarity => {
     const list = byRarity[rarity];
@@ -2423,7 +2361,6 @@ function openAvatars() {
     });
     html += '</div>';
   });
-
   el.innerHTML = html;
   updateHeaderStats();
   showScreen('screen-avatars');
@@ -2453,14 +2390,13 @@ function tryBuyAvatar(id) {
   save();
   playSound('purchase');
   playSound('achievement');
-  vibrate([30, 50, 30]);
   toast(`🎉 ${avatar.emoji} ${avatar.name} открыт!`, 2500);
   checkAchievements();
   openAvatars();
 }
 
 /* ============================================================
-   КВЕСТЫ
+   КВЕСТЫ (экран)
    ============================================================ */
 function openQuests() {
   ensureQuestsForToday();
@@ -2468,22 +2404,18 @@ function openQuests() {
   if (!el) return;
   const completed = data.settings.questsCompleted || [];
   const progress = data.settings.questsProgress || {};
-
   let html = '';
-  // Сундук
   const treasureReady = isTreasureReady();
   const treasureOpenedToday = data.settings.treasureDate === todayLocalStr();
   html += `<div class="list-item" style="background:linear-gradient(135deg,${treasureOpenedToday ? 'var(--good),#2fb350' : treasureReady ? 'var(--gold),var(--warn)' : 'var(--line),var(--line)'});color:${treasureReady || treasureOpenedToday ? '#fff' : 'var(--text)'};" onclick="${treasureReady ? `openModal('modal-treasure')` : treasureOpenedToday ? `toast('Сундук уже открыт сегодня. Возвращайся завтра!')` : `toast('Выполни все квесты, чтобы открыть сундук!')`}">
     <div class="info">
-      <div class="title" style="font-size:18px;">${treasureOpenedToday ? '✅ Сундук открыт!' : treasureReady ? '🎁 Сундук готов!' : '🎁 Сундук дня'}</div>
+      <div class="title" style="font-size:18px;color:${treasureReady || treasureOpenedToday ? '#fff' : 'var(--text)'};">${treasureOpenedToday ? '✅ Сундук открыт!' : treasureReady ? '🎁 Сундук готов!' : '🎁 Сундук дня'}</div>
       <div class="sub" style="color:${treasureReady || treasureOpenedToday ? 'rgba(255,255,255,0.9)' : 'var(--sub)'}">
         ${treasureOpenedToday ? 'Заходи завтра за новым' : treasureReady ? 'Нажми, чтобы открыть!' : `Выполнено ${completed.length} / ${currentQuests.length} квестов`}
       </div>
     </div>
   </div>`;
-
   html += '<div class="section-title">Ежедневные квесты</div>';
-
   currentQuests.forEach(q => {
     const cur = progress[q.id] || 0;
     const isDone = completed.includes(q.id);
@@ -2497,7 +2429,6 @@ function openQuests() {
       <div class="q-count">${cur} / ${q.target}</div>
     </div>`;
   });
-
   el.innerHTML = html;
   showScreen('screen-quests');
 }
@@ -2630,14 +2561,3 @@ function openAchievements() {
   `;
   showScreen('screen-achievements');
 }
-
-/* ============================================================
-   РУЧНОЕ ОТКРЫТИЕ СУНДУКА ИЗ КВЕСТОВ
-   ============================================================ */
-document.addEventListener('click', (e) => {
-  const chest = e.target.closest('#treasure-chest');
-  if (chest && !chest.classList.contains('opened')) {
-    // клик по сундуку внутри модалки — открываем
-    // (кнопка "Открыть" уже вызывает openTreasure)
-  }
-});
