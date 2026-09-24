@@ -1844,11 +1844,17 @@ function startSpeedTimer() {
   speedTimer = setInterval(() => {
     speedTimeLeft--;
     updateSpeedTimerDisplay();
-    if (speedTimeLeft <= 10 && speedTimeLeft > 0 && data.settings.tick) {
-      playSound(speedTimeLeft <= 5 ? 'tickUrgent' : 'tick');
+    // Тик в последние 10 секунд
+    if (speedTimeLeft <= 10 && speedTimeLeft > 0) {
+      // Разбудить звук ПЕРЕД каждым тиком (iOS)
+      wakeAudio();
+      if (data.settings.tick) {
+        playSound(speedTimeLeft <= 5 ? 'tickUrgent' : 'tick');
+      }
     }
     if (speedTimeLeft <= 0) {
       clearInterval(speedTimer);
+      wakeAudio();
       playSound('timeUp');
       finishSession();
     }
