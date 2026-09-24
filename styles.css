@@ -2075,3 +2075,256 @@ header h1 {
 .mt-16 { margin-top: 16px; }
 .mb-8 { margin-bottom: 8px; }
 .mb-16 { margin-bottom: 16px; }
+/* ============================================================
+   ЗИМА НА ТРОПЕ (v7.2)
+   ============================================================ */
+
+/* ---------- Снежинки на тропе ---------- */
+.trail-snow {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+  z-index: 5;
+}
+.trail-snowflake {
+  position: absolute;
+  top: -10%;
+  color: #fff;
+  opacity: 0.8;
+  animation: trailSnowFall linear infinite;
+  filter: drop-shadow(0 0 3px rgba(255, 255, 255, 0.6));
+}
+@keyframes trailSnowFall {
+  0% {
+    transform: translateY(0) translateX(0) rotate(0);
+    opacity: 0.9;
+  }
+  50% {
+    transform: translateY(50vh) translateX(20px) rotate(180deg);
+    opacity: 0.7;
+  }
+  100% {
+    transform: translateY(100vh) translateX(-20px) rotate(360deg);
+    opacity: 0;
+  }
+}
+
+/* ---------- Зимний фон тропы ---------- */
+.trail-wrap {
+  background: linear-gradient(180deg, #0a1a2a 0%, #0d2438 40%, #1a3a5c 100%);
+  position: relative;
+}
+html[data-theme="light"] .trail-wrap,
+html:not([data-theme="dark"]):not([data-theme="arctic"]) .trail-wrap {
+  background: linear-gradient(180deg, #d6efff 0%, #e8f7ff 40%, #f5fbff 100%);
+}
+html[data-theme="dark"] .trail-wrap {
+  background: linear-gradient(180deg, #0a0a12 0%, #14192a 40%, #1a2138 100%);
+}
+
+/* ---------- Шапка с пингвином — зимнее оформление ---------- */
+.trail-header {
+  background: linear-gradient(135deg, #c8e8ff 0%, #7ec8f0 100%);
+  position: relative;
+  overflow: hidden;
+}
+html[data-theme="arctic"] .trail-header {
+  background: linear-gradient(135deg, #0d2c42 0%, #1a4a6e 100%);
+}
+.trail-header::after {
+  content: '';
+  position: absolute;
+  bottom: -10px;
+  left: 0;
+  right: 0;
+  height: 20px;
+  background: radial-gradient(ellipse at center, rgba(255,255,255,0.4), transparent 70%);
+}
+
+/* ---------- Ледяные уроки ---------- */
+.lesson-circle {
+  background: linear-gradient(135deg, #ffffff 0%, #e8f4ff 100%);
+  border: 4px solid #a8d5f0;
+  box-shadow: 
+    0 4px 0 rgba(168, 213, 240, 0.6),
+    0 8px 20px rgba(79, 195, 247, 0.25),
+    inset 0 2px 6px rgba(255, 255, 255, 0.9);
+  position: relative;
+  overflow: visible;
+}
+html[data-theme="arctic"] .lesson-circle,
+html[data-theme="dark"] .lesson-circle {
+  background: linear-gradient(135deg, #1a3a5c 0%, #0f2c42 100%);
+  border-color: #2a5a80;
+}
+/* Сугроб под уроком */
+.lesson-circle::after {
+  content: '';
+  position: absolute;
+  bottom: -10px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 100%;
+  height: 12px;
+  background: radial-gradient(ellipse at center, rgba(255,255,255,0.9), transparent 70%);
+  border-radius: 50%;
+  z-index: -1;
+  opacity: 0.7;
+}
+html[data-theme="dark"] .lesson-circle::after,
+html[data-theme="arctic"] .lesson-circle::after {
+  background: radial-gradient(ellipse at center, rgba(168,213,240,0.4), transparent 70%);
+}
+/* Блик на пройденных (золотые снежинки-искры) */
+.lesson-circle.done {
+  background: linear-gradient(135deg, #fff9c4 0%, #ffd60a 100%);
+  border-color: #e6c200;
+  box-shadow:
+    0 4px 0 rgba(230, 194, 0, 0.6),
+    0 8px 24px rgba(255, 214, 10, 0.5),
+    inset 0 2px 6px rgba(255, 255, 255, 0.9);
+}
+.lesson-circle.done::before {
+  content: '✨';
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  font-size: 18px;
+  animation: sparkle 2s infinite;
+}
+@keyframes sparkle {
+  0%, 100% { transform: scale(1) rotate(0); opacity: 0.8; }
+  50% { transform: scale(1.3) rotate(20deg); opacity: 1; }
+}
+
+/* Текущий урок — пульсирующий с сиянием */
+.lesson-circle.current {
+  border-color: #4fc3f7;
+  box-shadow:
+    0 0 0 0 rgba(79, 195, 247, 0.7),
+    0 4px 0 rgba(79, 195, 247, 0.6),
+    0 8px 20px rgba(79, 195, 247, 0.4);
+  animation: currentPulse 1.5s infinite, currentGlow 2s infinite alternate;
+}
+@keyframes currentGlow {
+  from { box-shadow: 0 0 0 0 rgba(79,195,247,0.7), 0 4px 0 rgba(79,195,247,0.6), 0 8px 20px rgba(79,195,247,0.4); }
+  to { box-shadow: 0 0 30px 10px rgba(79,195,247,0.3), 0 4px 0 rgba(79,195,247,0.6), 0 12px 30px rgba(79,195,247,0.6); }
+}
+
+/* Замок на закрытых уроках */
+.lesson-circle.locked {
+  background: linear-gradient(135deg, #e8eef5 0%, #d1dbe6 100%);
+  border-color: #b8c5d4;
+  filter: grayscale(0.3);
+}
+html[data-theme="dark"] .lesson-circle.locked,
+html[data-theme="arctic"] .lesson-circle.locked {
+  background: linear-gradient(135deg, #1a2230 0%, #0f1520 100%);
+  border-color: #2a3545;
+}
+
+/* ---------- Ёлочки по бокам тропы ---------- */
+.trail-tree {
+  position: absolute;
+  font-size: 28px;
+  pointer-events: none;
+  opacity: 0.85;
+  z-index: 1;
+  filter: drop-shadow(0 4px 6px rgba(0,0,0,0.15));
+  animation: treeSway 4s infinite ease-in-out;
+}
+@keyframes treeSway {
+  0%, 100% { transform: rotate(-3deg); }
+  50% { transform: rotate(3deg); }
+}
+.trail-tree.left { left: 8px; }
+.trail-tree.right { right: 8px; }
+.trail-tree.t1 { top: 15%; }
+.trail-tree.t2 { top: 45%; }
+.trail-tree.t3 { top: 75%; }
+
+/* ---------- Зимние линии между уроками ---------- */
+.trail-node .line {
+  background: linear-gradient(180deg, #a8d5f0 0%, #7ec8f0 50%, #a8d5f0 100%);
+  width: 5px;
+  opacity: 0.6;
+  box-shadow: 0 0 8px rgba(126, 200, 240, 0.5);
+}
+.trail-node.done .line {
+  background: linear-gradient(180deg, #ffd60a 0%, #e6c200 50%, #ffd60a 100%);
+  opacity: 0.8;
+  box-shadow: 0 0 8px rgba(255, 214, 10, 0.5);
+}
+/* ============================================================
+   ТРОПА ЗИГЗАГОМ (v7.2)
+   ============================================================ */
+
+.trail-path {
+  position: relative;
+  padding: 20px 16px 60px;
+  display: flex;
+  flex-direction: column;
+  gap: 40px;
+}
+
+.trail-node {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+}
+
+/* Зигзаг — чётные налево, нечётные направо */
+.trail-node:nth-child(4n+1) { transform: translateX(-70px); }
+.trail-node:nth-child(4n+2) { transform: translateX(-20px); }
+.trail-node:nth-child(4n+3) { transform: translateX(20px); }
+.trail-node:nth-child(4n+4) { transform: translateX(70px); }
+
+/* На телефоне зигзаг мягче */
+@media (max-width: 420px) {
+  .trail-node:nth-child(4n+1) { transform: translateX(-50px); }
+  .trail-node:nth-child(4n+2) { transform: translateX(-15px); }
+  .trail-node:nth-child(4n+3) { transform: translateX(15px); }
+  .trail-node:nth-child(4n+4) { transform: translateX(50px); }
+}
+
+/* Линия между кружками идёт по диагонали — прячем старую прямую */
+.trail-node .line {
+  display: none;
+}
+
+/* Название урока — ПОД кружком, по центру */
+.lesson-label {
+  position: static;
+  text-align: center;
+  margin-top: 4px;
+  max-width: 180px;
+  pointer-events: auto;
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(6px);
+  padding: 6px 12px;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(79, 195, 247, 0.2);
+}
+html[data-theme="dark"] .lesson-label,
+html[data-theme="arctic"] .lesson-label {
+  background: rgba(15, 44, 66, 0.85);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+}
+.lesson-label .title {
+  font-size: 13px;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--text);
+}
+.lesson-label .sub {
+  font-size: 11px;
+  color: var(--sub);
+  margin-top: 2px;
+  white-space: nowrap;
+}
