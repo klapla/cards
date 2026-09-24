@@ -26,13 +26,13 @@
     <div class="snowflake">❅</div>
     <div class="snowflake">❆</div>
   </div>
-  <div class="preloader-penguin" id="preloader-penguin">🐧</div>
+  <div class="preloader-penguin">🐧</div>
   <div class="preloader-name">Cards</div>
   <div class="preloader-sub">Загрузка...</div>
 </div>
 
 <!-- ============================================================
-     ОНБОРДИНГ (3 экрана при первом запуске)
+     ОНБОРДИНГ
      ============================================================ -->
 <div class="onboarding" id="onboarding">
   <div class="onboarding-slide active" data-slide="0">
@@ -44,10 +44,16 @@
   <div class="onboarding-slide" data-slide="1">
     <div class="onboarding-emoji">🌳</div>
     <h1>Учись по тропе</h1>
-    <p>5 языков с готовыми темами: испанский, английский, немецкий, французский, итальянский. Или создай свои карточки.</p>
+    <p>5 языков с готовыми темами: испанский, английский, немецкий, французский, итальянский. Или создай свои карточки и фразы.</p>
     <button class="btn btn-primary btn-large" onclick="nextOnboarding()">Дальше →</button>
   </div>
   <div class="onboarding-slide" data-slide="2">
+    <div class="onboarding-emoji">📚</div>
+    <h1>Новый раздел «Обучение»</h1>
+    <p>Диктант, пропущенные буквы, собери фразу — учись играя!</p>
+    <button class="btn btn-primary btn-large" onclick="nextOnboarding()">Дальше →</button>
+  </div>
+  <div class="onboarding-slide" data-slide="3">
     <div class="onboarding-emoji">🏆</div>
     <h1>Зарабатывай награды</h1>
     <p>XP, монеты, ачивки, сундуки, аватарки. Стань легендой и открой самого редкого пингвина за 800 монет!</p>
@@ -55,6 +61,7 @@
   </div>
   <div class="onboarding-dots">
     <div class="dot active"></div>
+    <div class="dot"></div>
     <div class="dot"></div>
     <div class="dot"></div>
   </div>
@@ -65,14 +72,14 @@
      ============================================================ -->
 <div id="app">
 
-  <!-- ===================== ЯЗЫКИ (главная) ===================== -->
+  <!-- ===================== ЯЗЫКИ ===================== -->
   <div class="screen active" id="screen-langs">
     <header>
       <h1>Мои языки</h1>
       <div class="header-stats">
-        <span class="stat-pill" id="header-coins" title="Монеты">💰 0</span>
-        <span class="stat-pill" id="header-xp" title="Опыт">💎 0</span>
-        <span class="stat-pill streak" id="header-streak" title="Дней подряд">🔥 0</span>
+        <span class="stat-pill" id="header-coins">💰 0</span>
+        <span class="stat-pill" id="header-xp">💎 0</span>
+        <span class="stat-pill streak" id="header-streak">🔥 0</span>
       </div>
     </header>
     <div class="list" id="langs-list"></div>
@@ -92,6 +99,7 @@
     <div class="tabs">
       <button class="tab active" id="tab-trail" onclick="switchTab('trail')">🌳 Тропа</button>
       <button class="tab" id="tab-mine" onclick="switchTab('mine')">📁 Мои папки</button>
+      <button class="tab" id="tab-phrases" onclick="switchTab('phrases')">💬 Фразы</button>
     </div>
     <div class="trail-wrap" id="tab-content-trail">
       <div class="trail-header" id="trail-header">
@@ -107,9 +115,16 @@
         <button class="btn btn-primary" style="flex:1;" onclick="openAddFolder()">+ Свои слова</button>
       </div>
     </div>
+    <div class="trail-wrap" id="tab-content-phrases" style="display:none;">
+      <div class="list" id="phrases-list"></div>
+      <div class="bottom-bar" style="position:sticky;bottom:0;">
+        <button class="btn btn-secondary" style="flex:1;" onclick="openImportCSV()">📥 CSV</button>
+        <button class="btn btn-primary" style="flex:1;" onclick="openAddPhrasesFolder()">+ Фразы</button>
+      </div>
+    </div>
   </div>
 
-  <!-- ===================== КАРТОЧКИ ПАПКИ ===================== -->
+  <!-- ===================== КАРТОЧКИ ===================== -->
   <div class="screen" id="screen-cards">
     <header>
       <button class="back-btn" onclick="goTrail()">‹ Назад</button>
@@ -132,15 +147,110 @@
     <div class="mode-picker" id="mode-picker"></div>
   </div>
 
+  <!-- ===================== РАЗДЕЛ ОБУЧЕНИЕ ===================== -->
+  <div class="screen" id="screen-learning">
+    <header>
+      <button class="back-btn" onclick="goTrail()">‹ Назад</button>
+      <h1>📚 Обучение</h1>
+    </header>
+    <div class="list" id="learning-content"></div>
+  </div>
+
+  <!-- ===================== ДИКТАНТ ===================== -->
+  <div class="screen" id="screen-dictation">
+    <header>
+      <button class="back-btn" onclick="exitDictation()">‹ Выйти</button>
+      <h1>✍️ Диктант</h1>
+    </header>
+    <div class="progress-wrap">
+      <div class="progress"><div id="dictation-progress-fill" style="width:0%"></div></div>
+      <div class="progress-text">
+        <span id="dictation-progress">0 / 0</span>
+        <span id="dictation-session">✓ 0 · ✗ 0</span>
+      </div>
+    </div>
+    <div class="dictation-area">
+      <div class="dictation-translation" id="dictation-translation">—</div>
+      <button class="dictation-speak" onclick="dictationSpeak()">🔊</button>
+      <div class="dictation-hint" id="dictation-hint">а____</div>
+    </div>
+    <div class="dictation-input-wrap">
+      <input type="text" id="dictation-input" class="dictation-input" 
+             autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
+             placeholder="Напиши слово...">
+      <button class="btn btn-primary btn-check" onclick="dictationCheck()">Проверить</button>
+    </div>
+  </div>
+
+  <!-- ===================== ПРОПУЩЕННЫЕ БУКВЫ ===================== -->
+  <div class="screen" id="screen-letters">
+    <header>
+      <button class="back-btn" onclick="exitLetters()">‹ Выйти</button>
+      <h1>🔤 Пропущенные буквы</h1>
+    </header>
+    <div class="progress-wrap">
+      <div class="progress"><div id="letters-progress-fill" style="width:0%"></div></div>
+      <div class="progress-text">
+        <span id="letters-progress">0 / 0</span>
+        <span id="letters-session">✓ 0 · ✗ 0</span>
+      </div>
+    </div>
+    <div class="letters-area">
+      <div class="letters-translation" id="letters-translation">—</div>
+      <div class="letters-word" id="letters-word">_ _ _ _</div>
+    </div>
+    <div class="letters-keyboard" id="letters-keyboard"></div>
+  </div>
+
+  <!-- ===================== ПЕРЕТАСКИВАНИЕ БУКВ ===================== -->
+  <div class="screen" id="screen-unscramble">
+    <header>
+      <button class="back-btn" onclick="exitUnscramble()">‹ Выйти</button>
+      <h1>🎯 Собери слово</h1>
+    </header>
+    <div class="progress-wrap">
+      <div class="progress"><div id="unscramble-progress-fill" style="width:0%"></div></div>
+      <div class="progress-text">
+        <span id="unscramble-progress">0 / 0</span>
+        <span id="unscramble-session">✓ 0 · ✗ 0</span>
+      </div>
+    </div>
+    <div class="unscramble-area">
+      <div class="unscramble-translation" id="unscramble-translation">—</div>
+      <div class="unscramble-answer" id="unscramble-answer"></div>
+      <div class="unscramble-pool" id="unscramble-pool"></div>
+    </div>
+  </div>
+
+  <!-- ===================== СОБЕРИ ФРАЗУ ===================== -->
+  <div class="screen" id="screen-sentence">
+    <header>
+      <button class="back-btn" onclick="exitSentence()">‹ Выйти</button>
+      <h1>🧩 Собери фразу</h1>
+    </header>
+    <div class="progress-wrap">
+      <div class="progress"><div id="sentence-progress-fill" style="width:0%"></div></div>
+      <div class="progress-text">
+        <span id="sentence-progress">0 / 0</span>
+        <span id="sentence-session">✓ 0 · ✗ 0</span>
+      </div>
+    </div>
+    <div class="sentence-area">
+      <div class="sentence-translation" id="sentence-translation">—</div>
+      <div class="sentence-answer" id="sentence-answer"></div>
+      <div class="sentence-pool" id="sentence-pool"></div>
+    </div>
+  </div>
+
   <!-- ===================== КЛАССИКА ===================== -->
   <div class="screen" id="screen-study">
     <header>
       <button class="back-btn" onclick="exitStudy()">‹ Выйти</button>
       <h1 id="study-title"></h1>
-      <button class="btn-icon" onclick="toggleReverse()" id="reverse-btn" title="Обратный режим">🔄</button>
-      <button class="btn-icon" onclick="shuffleDeck()" title="Перемешать">↻</button>
-      <button class="btn-icon" onclick="toggleStar()" id="star-btn" title="Избранное">☆</button>
-      <button class="btn-icon" onclick="toggleHard()" id="hard-btn" title="Сложное">⚡</button>
+      <button class="btn-icon" onclick="toggleReverse()" id="reverse-btn">🔄</button>
+      <button class="btn-icon" onclick="shuffleDeck()">↻</button>
+      <button class="btn-icon" onclick="toggleStar()" id="star-btn">☆</button>
+      <button class="btn-icon" onclick="toggleHard()" id="hard-btn">⚡</button>
     </header>
     <div class="progress-wrap">
       <div class="progress"><div id="progress-fill" style="width:0%"></div></div>
@@ -153,7 +263,7 @@
       <div class="card" id="card">
         <div class="meta"><span id="card-count"></span><span id="card-mark"></span></div>
         <div class="word" id="card-word"></div>
-        <button class="speak" onclick="speakCurrent(event)">🔊</button>
+        <button class="speak" onclick="event.stopPropagation(); speakCurrent(event)">🔊</button>
         <div class="hint" id="card-hint">Нажмите, чтобы перевернуть</div>
       </div>
     </div>
@@ -164,7 +274,7 @@
     <div class="swipe-hint">Свайп влево — не знаю · вправо — знаю</div>
   </div>
 
-  <!-- ===================== БЫСТРЫЙ ТЕСТ ===================== -->
+  <!-- ===================== ТЕСТ ===================== -->
   <div class="screen" id="screen-quiz">
     <header>
       <button class="back-btn" onclick="exitStudy()">‹ Выйти</button>
@@ -229,7 +339,7 @@
       <button class="back-btn" onclick="exitStudy()">‹ Выйти</button>
       <h1 id="speed-title">⚡ Быстрый</h1>
     </header>
-    <div class="speed-timer" id="speed-timer">45</div>
+    <div class="speed-timer" id="speed-timer">30</div>
     <div class="speed-score" id="speed-score">Счёт: 0 / 10</div>
     <div class="quiz-question"><div id="speed-question">—</div></div>
     <div class="quiz-options" id="speed-options"></div>
@@ -245,7 +355,7 @@
       <div class="card" id="mix-card">
         <div class="meta"><span id="mix-count"></span><span id="mix-source"></span></div>
         <div class="word" id="mix-word"></div>
-        <button class="speak" onclick="speakMix(event)">🔊</button>
+        <button class="speak" onclick="event.stopPropagation(); speakMix(event)">🔊</button>
         <div class="hint" id="mix-hint">Нажмите, чтобы перевернуть</div>
       </div>
     </div>
@@ -277,7 +387,7 @@
       <div class="finish-stat"><div class="num" id="finish-pct">0%</div><div class="lbl">Успех</div></div>
     </div>
     <div class="finish-actions">
-      <button class="btn btn-secondary" onclick="shareResult()" title="Поделиться">📤</button>
+      <button class="btn btn-secondary" onclick="shareResult()">📤</button>
       <button class="btn btn-secondary" onclick="exitStudy()">Выйти</button>
       <button class="btn btn-primary" onclick="repeatLesson()">Повторить</button>
     </div>
@@ -287,7 +397,7 @@
   <div class="screen" id="screen-profile">
     <header>
       <h1>Профиль</h1>
-      <button class="btn-icon" onclick="openSettings()" title="Настройки">⚙️</button>
+      <button class="btn-icon" onclick="openSettings()">⚙️</button>
     </header>
     <div class="list" id="profile-content"></div>
   </div>
@@ -302,7 +412,7 @@
     <div class="list" id="shop-content"></div>
   </div>
 
-  <!-- ===================== КОЛЛЕКЦИЯ АВАТАРОК ===================== -->
+  <!-- ===================== АВАТАРКИ ===================== -->
   <div class="screen" id="screen-avatars">
     <header>
       <button class="back-btn" onclick="openShop()">‹ Назад</button>
@@ -339,6 +449,15 @@
     <div class="list" id="stats-content"></div>
   </div>
 
+  <!-- ===================== АНАЛИТИКА ===================== -->
+  <div class="screen" id="screen-analytics">
+    <header>
+      <button class="back-btn" onclick="goProfile()">‹ Назад</button>
+      <h1>📈 Аналитика</h1>
+    </header>
+    <div class="list" id="analytics-content"></div>
+  </div>
+
   <!-- ===================== ДОСТИЖЕНИЯ ===================== -->
   <div class="screen" id="screen-achievements">
     <header>
@@ -366,11 +485,6 @@
         <div class="val" id="daily-goal-val">20 слов</div></div>
         <button class="btn btn-secondary btn-small" onclick="changeDailyGoal()">Изменить</button>
       </div>
-      <div class="settings-row">
-        <div><div class="lbl">Только сложные слова</div>
-        <div class="val">Режим фильтра</div></div>
-        <label class="switch"><input type="checkbox" id="hard-filter-toggle" onchange="toggleHardFilter()"><span class="slider"></span></label>
-      </div>
       <div class="section-title">Тема оформления</div>
       <div class="settings-row">
         <div class="lbl">Тема</div>
@@ -379,6 +493,9 @@
           <option value="light">Светлая</option>
           <option value="dark">Тёмная</option>
           <option value="arctic">Арктика</option>
+          <option value="sunset">Закат</option>
+          <option value="space">Космос</option>
+          <option value="forest">Лес</option>
         </select>
       </div>
       <div class="section-title">Звук и вибрация</div>
@@ -417,6 +534,9 @@
   <nav id="main-nav">
     <button class="nav-btn active" id="nav-langs" onclick="navTo('langs')">
       <span class="nav-icon">🏠</span><span>Языки</span>
+    </button>
+    <button class="nav-btn" id="nav-learning" onclick="navTo('learning')">
+      <span class="nav-icon">📚</span><span>Обучение</span>
     </button>
     <button class="nav-btn" id="nav-quests" onclick="navTo('quests')">
       <span class="nav-icon">🎯</span><span>Квесты</span>
@@ -464,16 +584,62 @@
   </div>
 </div>
 
-<!-- Массовый ввод -->
+<!-- Добавление папки с фразами -->
+<div class="modal-bg" id="modal-phrases-folder">
+  <div class="modal">
+    <h2>💬 Папка с фразами</h2>
+    <div class="help-text" style="margin-bottom:10px;">Фразы учатся как обычные карточки, но в разделе «Обучение» их можно собирать как в Duolingo.</div>
+    <input type="text" id="phrases-folder-input" placeholder="Например: Приветствия" autocomplete="off">
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="closeModal('modal-phrases-folder')">Отмена</button>
+      <button class="btn btn-primary" onclick="savePhrasesFolder()">Создать</button>
+    </div>
+  </div>
+</div>
+
+<!-- Массовый ввод (НОВЫЙ формат) -->
 <div class="modal-bg" id="modal-bulk">
   <div class="modal">
-    <h2>Слова и переводы</h2>
-    <div class="help-text" style="margin-bottom:10px;">Каждая строка — карточка. Формат: <b>слово | перевод</b><br>Разделители: <b>|</b>, Tab, <b>—</b>, <b>;</b>, <b>,</b></div>
-    <textarea id="bulk-input" placeholder="hola | привет&#10;adiós | пока&#10;gracias | спасибо"></textarea>
+    <h2>Ввод слов и переводов</h2>
+    <div class="help-text" style="margin-bottom:10px;">
+      <b>Формат — автоопределение:</b><br>
+      • Одна строка = слово, следующая = перевод<br>
+      • Или через <b>|</b>, <b>—</b>, <b>;</b>, <b>Tab</b><br>
+      • Если в переводе несколько значений — пиши через запятую, программа не запутается<br><br>
+      <b>Пример:</b><br>
+      apple<br>
+      яблоко, плод яблони<br>
+      banana<br>
+      банан
+    </div>
+    <textarea id="bulk-input" placeholder="apple&#10;яблоко, плод яблони&#10;banana&#10;банан"></textarea>
     <div class="modal-actions" style="margin-top:12px;">
       <button class="btn btn-secondary" onclick="closeModal('modal-bulk')">Отмена</button>
       <button class="btn btn-danger" onclick="replaceBulk()" style="margin-right:auto;">Заменить</button>
       <button class="btn btn-primary" onclick="addBulk()">Добавить</button>
+    </div>
+  </div>
+</div>
+
+<!-- Ввод фраз -->
+<div class="modal-bg" id="modal-bulk-phrases">
+  <div class="modal">
+    <h2>💬 Фразы и переводы</h2>
+    <div class="help-text" style="margin-bottom:10px;">
+      <b>Формат — 1 строка = 1 фраза:</b><br>
+      • Фраза, следующая строка = перевод<br>
+      • Или через <b>|</b><br><br>
+      <b>Пример:</b><br>
+      ¿Cómo te llamas?<br>
+      Как тебя зовут?<br>
+      Me llamo Pedro<br>
+      Меня зовут Педро
+    </div>
+    <textarea id="bulk-phrases-input" placeholder="¿Cómo te llamas?&#10;Как тебя зовут?&#10;Me llamo Pedro&#10;Меня зовут Педро"></textarea>
+    <div class="modal-actions" style="margin-top:12px;">
+      <button class="btn btn-secondary" onclick="closeModal('modal-bulk-phrases')">Отмена</button>
+      <button class="btn btn-danger" onclick="replaceBulkPhrases()" style="margin-right:auto;">Заменить</button>
+      <button class="btn btn-primary" onclick="addBulkPhrases()">Добавить</button>
     </div>
   </div>
 </div>
@@ -510,7 +676,7 @@
     <div class="help-text" style="margin-bottom:14px;">
       Выбери файл <b>.csv</b>, <b>.txt</b> или <b>.tsv</b>.<br>
       Формат строки: <b>слово,перевод</b> или <b>слово | перевод</b>.<br>
-      Каждый новый импорт <b>добавляется</b> как новая папка — старые сохраняются.
+      Каждый новый импорт <b>добавляется</b> как новая папка.
     </div>
     <input type="file" id="csv-file" accept=".csv,.txt,.tsv" style="display:none" onchange="handleCSV(event)">
     <input type="text" id="csv-name" placeholder="Название папки (необязательно)" autocomplete="off">
@@ -528,7 +694,7 @@
     <h2>Сундук дня!</h2>
     <p class="help-text" id="treasure-text">Ты выполнил все квесты. Открывай награду!</p>
     <div class="modal-actions" style="justify-content:center;">
-      <button class="btn btn-primary btn-large" onclick="openTreasure()" id="treasure-open-btn">Открыть</button>
+      <button class="btn btn-primary btn-large" onclick="openTreasure()">Открыть</button>
     </div>
   </div>
 </div>
@@ -557,14 +723,6 @@
     <linearGradient id="ringGrad" x1="0%" y1="0%" x2="100%" y2="100%">
       <stop offset="0%" stop-color="#007aff"/>
       <stop offset="100%" stop-color="#5856d6"/>
-    </linearGradient>
-    <linearGradient id="arcticGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#4fc3f7"/>
-      <stop offset="100%" stop-color="#1e88e5"/>
-    </linearGradient>
-    <linearGradient id="goldGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#ffd60a"/>
-      <stop offset="100%" stop-color="#ff9500"/>
     </linearGradient>
   </defs>
 </svg>
