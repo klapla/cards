@@ -460,38 +460,70 @@ function switchTab(tab) {
 function renderTrail() {
   const lang = data.langs.find(l => l.id === currentLangId);
   if (!lang) { goLangs(); return; }
+
+  // Пингвин с фразой
   const phraseEl = document.getElementById('trail-phrase');
   if (phraseEl) phraseEl.textContent = penguinForTrail();
   updateTreasureButton();
+
+  // Тропа
   const pathEl = document.getElementById('trail-path');
   if (!pathEl) return;
   pathEl.innerHTML = '';
+
+  // Снег
+  const snow = document.createElement('div');
+  snow.className = 'trail-snow';
+  for (let i = 0; i < 20; i++) {
+    const flake = document.createElement('div');
+    flake.className = 'trail-snowflake';
+    flake.textContent = ['❅', '❆', '❄', '❅'][i % 4];
+    flake.style.left = Math.random() * 100 + '%';
+    flake.style.fontSize = (10 + Math.random() * 14) + 'px';
+    flake.style.animationDuration = (6 + Math.random() * 8) + 's';
+    flake.style.animationDelay = (Math.random() * 8) + 's';
+    snow.appendChild(flake);
+  }
+  pathEl.appendChild(snow);
+
+  // Ёлочки
+  ['t1', 't2', 't3'].forEach((t, i) => {
+    const treeL = document.createElement('div');
+    treeL.className = 'trail-tree left ' + t;
+    treeL.textContent = '🎄';
+    treeL.style.animationDelay = (i * 0.5) + 's';
+    pathEl.appendChild(treeL);
+    const treeR = document.createElement('div');
+    treeR.className = 'trail-tree right ' + t;
+    treeR.textContent = '🎄';
+    treeR.style.animationDelay = (i * 0.5 + 0.3) + 's';
+    pathEl.appendChild(treeR);
+  });
+
   if (!lang.lessons || !lang.lessons.length) {
     pathEl.innerHTML = `<div class="empty">${pickPenguin('empty')}</div>`;
     return;
   }
+
   const currentIdx = lang.lessons.findIndex(l => !l.completed);
   lang.lessons.forEach((lesson, idx) => {
     const isDone = lesson.completed;
     const isCurrent = idx === currentIdx;
     const isLocked = !isDone && !isCurrent && idx > currentIdx;
+
     const node = document.createElement('div');
     node.className = 'trail-node' + (isDone ? ' done' : '');
-    let labelHtml = '';
-    if (isCurrent || isDone) {
-      labelHtml = `<div class="lesson-label">
-        <div class="title">${lesson.themeEmoji || '📘'} ${esc(lesson.themeName)}</div>
-        <div class="sub">Урок ${lesson.lessonNum} · ${lesson.cards.length} слов</div>
-      </div>`;
-    }
+
     node.innerHTML = `
-      <div class="line"></div>
       <div class="lesson-circle ${isLocked ? 'locked' : ''} ${isCurrent ? 'current' : ''} ${isDone ? 'done' : ''}"
            onclick="${isLocked ? `trySkipLesson('${lesson.id}')` : `openLesson('${lesson.id}')`}">
         <div class="lesson-icon">${isDone ? '⭐' : isLocked ? '🔒' : lesson.themeEmoji || '📘'}</div>
         <div class="lesson-num">${lesson.lessonNum}/${lesson.totalInTheme}</div>
       </div>
-      ${labelHtml}
+      <div class="lesson-label">
+        <div class="title">${esc(lesson.themeName)}</div>
+        <div class="sub">Урок ${lesson.lessonNum} · ${lesson.cards.length} слов</div>
+      </div>
     `;
     pathEl.appendChild(node);
   });
