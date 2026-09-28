@@ -897,6 +897,7 @@ function renderModePicker() {
   if (!el) return;
   const c = getCurrentContainer();
   const hardCount = c ? c.cards.filter(x => x.hard).length : 0;
+  const unlearnedCount = c ? c.cards.filter(x => !(x.correct > 0 && x.correct >= x.wrong)).length : 0;
   const isPhrases = currentPhraseFolderId !== null;
   el.innerHTML = `
     <button class="mode-btn" onclick="startStudy('classic', false)">
@@ -907,7 +908,7 @@ function renderModePicker() {
     <button class="mode-btn" onclick="startStudy('classic', true)">
       <div class="mode-icon">🎯</div>
       <div class="mode-name">Только не выученные</div>
-      <div class="mode-desc">Слова, которые ты ещё плохо знаешь</div>
+      <div class="mode-desc">${unlearnedCount} слов для закрепления</div>
     </button>
     ${hardCount > 0 ? `
       <button class="mode-btn" onclick="startStudy('hard', false)">
@@ -924,8 +925,22 @@ function renderModePicker() {
     <button class="mode-btn" onclick="startStudy('match', false)">
       <div class="mode-icon">🔗</div>
       <div class="mode-name">Сопоставление</div>
-      <div class="mode-desc">Соедини пары (3+ элемента)</div>
+      <div class="mode-desc">Соедини пары (все слова)</div>
     </button>
+    ${unlearnedCount >= 3 ? `
+      <button class="mode-btn" onclick="startStudy('match', true)">
+        <div class="mode-icon">🔗🎯</div>
+        <div class="mode-name">Сопоставление — не выученные</div>
+        <div class="mode-desc">${unlearnedCount} слов, которые ещё не закрепил</div>
+      </button>
+    ` : ''}
+    ${hardCount >= 3 ? `
+      <button class="mode-btn" onclick="startStudy('matchhard', false)">
+        <div class="mode-icon">🔗⚡</div>
+        <div class="mode-name">Сопоставление — сложные</div>
+        <div class="mode-desc">${hardCount} помеченных ⚡</div>
+      </button>
+    ` : ''}
     <button class="mode-btn" onclick="startStudy('audio', false)">
       <div class="mode-icon">🔊</div>
       <div class="mode-name">Аудио-режим</div>
