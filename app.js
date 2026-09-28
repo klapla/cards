@@ -1004,9 +1004,12 @@ function resetSession() {
 function startStudy(mode, onlyUnlearned) {
   const c = getCurrentContainer();
   if (!c) return;
-  let deck = [...c.cards];
-  if (mode === 'hard') deck = deck.filter(x => x.hard);
-  else if (onlyUnlearned) deck = deck.filter(x => !(x.correct > 0 && x.correct >= x.wrong));
+ let deck = [...c.cards];
+if (mode === 'hard' || mode === 'matchhard') {
+  deck = deck.filter(x => x.hard);
+} else if (onlyUnlearned) {
+  deck = deck.filter(x => !(x.correct > 0 && x.correct >= x.wrong));
+}
   if (!deck.length) { toast('🐧 Нет слов для изучения'); return; }
   studyMode = mode;
   resetSession();
@@ -1023,7 +1026,7 @@ function startStudy(mode, onlyUnlearned) {
     document.getElementById('quiz-title').textContent = title;
     showScreen('screen-quiz');
     renderQuizCard();
-  } else if (mode === 'match') {
+ } else if (mode === 'match' || mode === 'matchhard') {
     if (studyDeck.length < 3) { toast('Нужно минимум 3 элемента'); return; }
     document.getElementById('match-title').textContent = title;
     showScreen('screen-match');
